@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  # Backend service definition will go here
+  # backend:
+  #   build:
+  #     context: ./backend
+  #   ports:
+  #     - "8000:8000"
+  #   volumes:
+  #     - ./backend:/app
+  #   environment:
+  #     - DATABASE_URL=postgresql://user:password@db:5432/appdb
+  #     - REDIS_URL=redis://redis:6379
+  #   depends_on:
+  #     - db
+  #     - redis
+
+  # Database service (PostgreSQL)
+  # db:
+  #   image: postgres:15
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data/
+  #   environment:
+  #     - POSTGRES_DB=appdb
+  #     - POSTGRES_USER=user
+  #     - POSTGRES_PASSWORD=password
+
+  # Cache service (Redis)
+  # redis:
+  #   image: redis:7
+
+  # Ollama service
+  # ollama:
+  #   image: ollama/ollama # Or specific version
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama_data:/root/.ollama # Persist downloaded models
+  #   # Add GPU support if needed/available
+  #   # deploy:
+  #   #   resources:
+  #   #     reservations:
+  #   #       devices:
+  #   #         - driver: nvidia
+  #   #           count: 1
+  #   #           capabilities: [gpu]
+
+  # Monitoring services (Prometheus, Grafana)
+  # prometheus:
+  #   image: prom/prometheus
+  #   volumes:
+  #     - ./infra/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+  #   ports:
+  #     - "9090:9090"
+
+  # grafana:
+  #   image: grafana/grafana
+  #   ports:
+  #     - "3000:3000"
+  #   volumes:
+  #     - grafana_data:/var/lib/grafana
+
+volumes:
+  postgres_data:
+  ollama_data:
+  grafana_data:
+
+# Network configuration (optional, but good practice)
+# networks:
+#   app_network:
+#     driver: bridge 

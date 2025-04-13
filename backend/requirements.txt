@@ -1,0 +1,20 @@
+fastapi
+uvicorn[standard]
+
+# For Ollama interaction (example)
+# httpx
+
+# For Database (example using SQLAlchemy and psycopg2)
+# sqlalchemy
+# psycopg2-binary
+# alembic # For migrations
+
+# For Redis
+# redis
+
+# For Testing
+pytest
+pytest-asyncio
+httpx # Also used for testing FastAPI apps
+
+# Add other dependencies here as needed 
