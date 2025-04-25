@@ -61,6 +61,42 @@ This project is a hands-on exercise in building a complete, production-ready app
 
 ## Getting Started 🚀
 
-*(Instructions to be added here - cloning, environment setup, running `docker-compose up`)*
+```bash
+git clone https://github.com/yourusername/end-to-end-llm-app.git
+cd end-to-end-llm-app
+which python3.11 # should be python3.11
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -r backend/requirements.txt
+mkdir tmp/
+```
 
-Let's build something awesome and learn a ton along the way!
+## Running Tests ✅
+
+This project uses `pytest` for testing. Ensure you have installed the development dependencies (including `pytest` and `pytest-asyncio` as listed in `backend/requirements.txt`).
+
+It's recommended to run tests from the project root directory.
+
+*   **Run all tests:**
+    ```bash
+    .venv/bin/python -m pytest
+    ```
+
+*   **Run tests in a specific file:**
+    ```bash
+    pytest backend/tests/mocks/test_mock_llm.py
+    ```
+
+*   **Run a specific test function by name:**
+    Use the `-k` flag followed by a string expression that matches part of the test function name.
+    ```bash
+    # Example: Run only the test_mock_generate_response_found test
+    pytest backend/tests/mocks/test_mock_llm.py -k test_mock_generate_response_found
+    ```
+
+*   **See output (`print` statements) and more details:**
+    Use the `-s` (capture disabled) and `-v` (verbose) flags.
+    ```bash
+    pytest -s -v
+    ```
+

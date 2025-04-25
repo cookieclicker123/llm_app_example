@@ -20,3 +20,6 @@ build/
 # IDE specific
 .idea/
 .vscode/
+
+# outputs
+tmp/
