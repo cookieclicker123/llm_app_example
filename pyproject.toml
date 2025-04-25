@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "end_to_end_llm_app_backend"
+version = "0.1.0"
+description = "Backend service for the End-to-End LLM App project."
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"} # Or choose another license
+# Add authors, classifiers, etc. as needed
+
+# Core dependencies (same as were in requirements.txt)
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]", # Includes httptools, uvloop, etc.
+    "httpx",
+    "pydantic", # Already a fastapi dependency, but good to be explicit
+    "python-dotenv", # For config later
+    # Add sqlalchemy, psycopg2-binary, redis etc. later when needed
+]
+
+[project.optional-dependencies]
+# Test dependencies
+test = [
+    "pytest",
+    "pytest-asyncio",
+    # httpx is already a core dependency
+]
+
+# You can add other groups like 'dev' for linters, formatters etc.
+
+[tool.setuptools]
+# Include the backend/app package
+packages = ["backend.app"]
+# If you move app to src, change this (e.g., package_dir = {"" = "src"})
+
+[tool.pytest.ini_options]
+# Recommended asyncio mode
+asyncio_mode = "auto"
+# Add test paths if needed, though pytest usually finds them
+# testpaths = [
+#     "backend/tests",
+# ] 
