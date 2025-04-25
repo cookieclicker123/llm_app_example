@@ -42,8 +42,10 @@ This project is a hands-on exercise in building a complete, production-ready app
 │   │   ├── services/       # Business logic, LLM interaction
 │   │   └── utils/          # Helper functions
 │   ├── tests/              # Pytest tests for the backend
-│   ├── Dockerfile          # Backend Docker image build instructions
-│   └── requirements.txt    # Backend Python dependencies
+│   ├── terminal_chat.py  # Direct service test (manual)
+│   ├── app.py            # API client test (manual)
+│   └── Dockerfile          # Note: Will need update for pyproject.toml build
+├── pyproject.toml          # Project definition and dependencies
 ├── frontend/
 │   ├── public/
 │   ├── src/                # React components, styles, logic
@@ -57,46 +59,115 @@ This project is a hands-on exercise in building a complete, production-ready app
 ├── README.md               # You are here!
 └── .gitignore
 ```
-*(This structure is a starting point and will evolve.)*
+*(This structure is starting to evolve!)*
 
 ## Getting Started 🚀
 
-```bash
-git clone https://github.com/yourusername/end-to-end-llm-app.git
-cd end-to-end-llm-app
-which python3.11 # should be python3.11
-python3.11 -m venv .venv
-source .venv/bin/activate
-pip install -r backend/requirements.txt
-mkdir tmp/
-```
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/yourusername/end-to-end-llm-app.git
+    cd end-to-end-llm-app
+    ```
+2.  **Create and activate a virtual environment:**
+    ```bash
+    # Ensure you have Python 3.11+
+    python3.11 -m venv .venv
+    source .venv/bin/activate
+    ```
+3.  **Install the backend package and test dependencies:**
+    ```bash
+    # Install in editable mode (-e) with optional [test] dependencies
+    pip install -e '.[test]'
+    ```
+4.  **Create temporary directory (if needed by tests):**
+    ```bash
+    mkdir -p tmp/
+    ```
+
+## Running the API Client Terminal Chat (Manual Testing) 💬
+
+An alternative interactive terminal script (`backend/app.py`) acts as an HTTP client to test the running FastAPI application endpoints.
+
+1.  **Ensure the FastAPI server is running:**
+    ```bash
+    # In terminal 1:
+    source .venv/bin/activate
+    uvicorn backend.app.main:app --reload
+    ```
+    Once running, you can access the interactive API documentation (Swagger UI) in your browser at [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs).
+
+2.  **Ensure Ollama is running** and accessible by the FastAPI server.
+3.  **Run the client script in a separate terminal:**
+    ```bash
+    # In terminal 2:
+    source .venv/bin/activate
+    python backend/app.py
+    ```
+4.  Type your prompts and press Enter. Type `quit` or `exit` to end.
+
+## Running the Direct Terminal Chat (Manual Testing) 🧑‍💻
+
+A simple interactive terminal chat script (`backend/terminal_chat.py`) is provided for manually testing the connection and streaming with a running Ollama instance.
+
+1.  **Ensure Ollama is running** and accessible (e.g., `ollama serve` or via Docker).
+2.  **Ensure the required model is pulled** (e.g., `ollama pull deepseek-r1:14b`).
+3.  **Activate the virtual environment:**
+    ```bash
+    source .venv/bin/activate
+    ```
+4.  **Run the script from the project root *as a module*:**
+    ```bash
+    python -m backend.terminal_chat
+    ```
+5.  Type your prompts and press Enter. Type `quit` or `exit` to end.
 
 ## Running Tests ✅
 
-This project uses `pytest` for testing. Ensure you have installed the development dependencies (including `pytest` and `pytest-asyncio` as listed in `backend/requirements.txt`).
+This project uses `pytest` for testing. Ensure you have installed the project with test dependencies (`pip install -e '.[test]'`).
 
-It's recommended to run tests from the project root directory.
+Run tests from the project root directory. **It is recommended to run `pytest` using the virtual environment's Python interpreter** to avoid path issues:
+```bash
+# Activate venv first if not already active
+source .venv/bin/activate
 
-*   **Run all tests:**
+# Recommended way to run pytest:
+.venv/bin/python -m pytest
+```
+
+*   **Service Tests (`backend/tests/services/`):** Tests for the business logic layer.
     ```bash
-    .venv/bin/python -m pytest
+    .venv/bin/python -m pytest backend/tests/services/
     ```
 
-*   **Run tests in a specific file:**
+*   **API Tests (`backend/tests/api/`):** These tests use FastAPI's dependency overriding feature. They replace the actual Ollama client functions with mock versions defined in `backend/tests/mocks/mock_llm.py` which use predefined question/answer pairs from `backend/tests/fixtures/mock_qa_pairs.json`. This isolates the API layer for testing.
     ```bash
-    pytest backend/tests/mocks/test_mock_llm.py
+    .venv/bin/python -m pytest backend/tests/api/
+    # Or a specific file:
+    # .venv/bin/python -m pytest backend/tests/api/test_chat_api.py
+    ```
+
+*   **Mock/Utility Tests (`backend/tests/mocks/`, `backend/tests/utils/`):** Tests for helper functions and mocking utilities.
+    ```bash
+    .venv/bin/python -m pytest backend/tests/mocks/
+    ```
+
+*   **Run tests in a specific file (e.g., mock tests):**
+    ```bash
+    .venv/bin/python -m pytest backend/tests/mocks/test_mock_llm.py
     ```
 
 *   **Run a specific test function by name:**
     Use the `-k` flag followed by a string expression that matches part of the test function name.
     ```bash
     # Example: Run only the test_mock_generate_response_found test
-    pytest backend/tests/mocks/test_mock_llm.py -k test_mock_generate_response_found
+    .venv/bin/python -m pytest backend/tests/mocks/test_mock_llm.py -k test_mock_generate_response_found
     ```
 
 *   **See output (`print` statements) and more details:**
     Use the `-s` (capture disabled) and `-v` (verbose) flags.
     ```bash
-    pytest -s -v
+    .venv/bin/python -m pytest -s -v
     ```
+
+Let's build something awesome and learn a ton along the way!
 
