@@ -6,6 +6,8 @@ from backend.app.models.chat import LLMRequest, LLMResponse
 from backend.app.services.chat_service import handle_chat_request, handle_chat_stream
 from backend.app.utils.ollama_client import create_ollama_generate_func, create_ollama_stream_func
 from backend.app.core.types import LLMFunction, LLMStreamingFunction
+# Import settings
+from backend.app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -16,12 +18,21 @@ logger = logging.getLogger(__name__)
 
 def get_ollama_generate() -> LLMFunction:
     """Dependency provider for the non-streaming Ollama client function."""
-    # In a real app, you might cache this instance or load config here
-    return create_ollama_generate_func()
+    # Pass config explicitly from settings
+    return create_ollama_generate_func(
+        base_url=settings.OLLAMA_BASE_URL,
+        default_model=settings.OLLAMA_DEFAULT_MODEL,
+        timeout=settings.OLLAMA_REQUEST_TIMEOUT
+    )
 
 def get_ollama_stream() -> LLMStreamingFunction:
     """Dependency provider for the streaming Ollama client function."""
-    return create_ollama_stream_func()
+    # Pass config explicitly from settings
+    return create_ollama_stream_func(
+        base_url=settings.OLLAMA_BASE_URL,
+        default_model=settings.OLLAMA_DEFAULT_MODEL,
+        timeout=settings.OLLAMA_REQUEST_TIMEOUT
+    )
 
 # --- API Router --- #
 

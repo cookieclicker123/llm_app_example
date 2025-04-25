@@ -17,6 +17,7 @@ dependencies = [
     "uvicorn[standard]", # Includes httptools, uvloop, etc.
     "httpx",
     "pydantic", # Already a fastapi dependency, but good to be explicit
+    "pydantic-settings", # Use pydantic-settings for config
     "python-dotenv", # For config later
     # Add sqlalchemy, psycopg2-binary, redis etc. later when needed
 ]

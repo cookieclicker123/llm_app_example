@@ -5,28 +5,29 @@ from typing import AsyncGenerator
 
 from backend.app.models.chat import LLMRequest, LLMResponse, StreamingChunk
 from backend.app.core.types import LLMFunction, LLMStreamingFunction
+# Import the settings instance
+from backend.app.core.config import settings
 
 # Configure logging
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
+# Logging level can be configured via settings.LOG_LEVEL elsewhere
+# logging.basicConfig(level=settings.LOG_LEVEL)
 
-# Default Configuration (Consider moving to core.config later)
-DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"
-DEFAULT_OLLAMA_MODEL = "deepseek-r1:14b" # Example default
-DEFAULT_REQUEST_TIMEOUT_SECONDS = 60
+# Default Configuration is now read from settings
+# DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"
+# DEFAULT_OLLAMA_MODEL = "deepseek-r1:14b"
+# DEFAULT_REQUEST_TIMEOUT_SECONDS = 60
 
 def create_ollama_generate_func(
-    base_url: str = DEFAULT_OLLAMA_BASE_URL,
-    default_model: str = DEFAULT_OLLAMA_MODEL,
-    timeout: int = DEFAULT_REQUEST_TIMEOUT_SECONDS
+    # Default values are now taken from the settings object
+    base_url: str = settings.OLLAMA_BASE_URL,
+    default_model: str = settings.OLLAMA_DEFAULT_MODEL,
+    timeout: int = settings.OLLAMA_REQUEST_TIMEOUT
 ) -> LLMFunction:
     """
     Factory function that creates an Ollama client function for generating full responses.
 
-    Args:
-        base_url: The base URL of the Ollama API.
-        default_model: The default Ollama model to use if not specified in the request.
-        timeout: Request timeout in seconds.
+    Configuration is sourced from the application settings.
 
     Returns:
         An async function conforming to the LLMFunction type alias.
@@ -44,7 +45,6 @@ def create_ollama_generate_func(
             "prompt": request.prompt,
             "stream": False,
             "options": request.options or {},
-            # "context": [] 
         }
 
         try:
@@ -76,17 +76,15 @@ def create_ollama_generate_func(
     return _generate # Return the nested function
 
 def create_ollama_stream_func(
-    base_url: str = DEFAULT_OLLAMA_BASE_URL,
-    default_model: str = DEFAULT_OLLAMA_MODEL,
-    timeout: int = DEFAULT_REQUEST_TIMEOUT_SECONDS
+    # Default values are now taken from the settings object
+    base_url: str = settings.OLLAMA_BASE_URL,
+    default_model: str = settings.OLLAMA_DEFAULT_MODEL,
+    timeout: int = settings.OLLAMA_REQUEST_TIMEOUT
 ) -> LLMStreamingFunction:
     """
     Factory function that creates an Ollama client function for streaming responses.
 
-    Args:
-        base_url: The base URL of the Ollama API.
-        default_model: The default Ollama model to use if not specified in the request.
-        timeout: Request timeout in seconds.
+    Configuration is sourced from the application settings.
 
     Returns:
         An async function conforming to the LLMStreamingFunction type alias.
@@ -104,7 +102,6 @@ def create_ollama_stream_func(
             "prompt": request.prompt,
             "stream": True,
             "options": request.options or {},
-            # "context": []
         }
 
         try:
@@ -126,7 +123,6 @@ def create_ollama_stream_func(
                                 logger.warning(f"Received non-JSON line from Ollama stream: {line}")
                             except Exception as e:
                                 logger.exception(f"Error processing Ollama stream chunk: {e}")
-                                # break # Optional: stop on error
 
         except httpx.HTTPStatusError as e:
             logger.error(f"Ollama API error on stream start: {e.response.status_code} - {e.response.text}")
