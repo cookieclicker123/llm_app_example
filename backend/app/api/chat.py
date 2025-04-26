@@ -6,8 +6,8 @@ from backend.app.models.chat import LLMRequest, LLMResponse
 from backend.app.services.chat_service import handle_chat_request, handle_chat_stream
 from backend.app.utils.ollama_client import create_ollama_generate_func, create_ollama_stream_func
 from backend.app.core.types import LLMFunction, LLMStreamingFunction
-# Import settings
-from backend.app.core.config import settings
+# Import settings dependency
+from backend.app.core.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -16,22 +16,22 @@ logger = logging.getLogger(__name__)
 # They will be called by FastAPI for each request needing them.
 # Configuration could be injected here later (e.g., from settings).
 
-def get_ollama_generate() -> LLMFunction:
+def get_ollama_generate(app_settings: Settings = Depends(get_settings)) -> LLMFunction:
     """Dependency provider for the non-streaming Ollama client function."""
-    # Pass config explicitly from settings
+    # Pass config explicitly from the injected settings instance
     return create_ollama_generate_func(
-        base_url=settings.OLLAMA_BASE_URL,
-        default_model=settings.OLLAMA_DEFAULT_MODEL,
-        timeout=settings.OLLAMA_REQUEST_TIMEOUT
+        base_url=app_settings.OLLAMA_BASE_URL,
+        default_model=app_settings.OLLAMA_DEFAULT_MODEL,
+        timeout=app_settings.OLLAMA_REQUEST_TIMEOUT
     )
 
-def get_ollama_stream() -> LLMStreamingFunction:
+def get_ollama_stream(app_settings: Settings = Depends(get_settings)) -> LLMStreamingFunction:
     """Dependency provider for the streaming Ollama client function."""
-    # Pass config explicitly from settings
+    # Pass config explicitly from the injected settings instance
     return create_ollama_stream_func(
-        base_url=settings.OLLAMA_BASE_URL,
-        default_model=settings.OLLAMA_DEFAULT_MODEL,
-        timeout=settings.OLLAMA_REQUEST_TIMEOUT
+        base_url=app_settings.OLLAMA_BASE_URL,
+        default_model=app_settings.OLLAMA_DEFAULT_MODEL,
+        timeout=app_settings.OLLAMA_REQUEST_TIMEOUT
     )
 
 # --- API Router --- #
@@ -41,18 +41,19 @@ router = APIRouter()
 @router.post("/", response_model=LLMResponse)
 async def chat_endpoint(
     request: LLMRequest,
-    # Inject the dependency using Depends
-    ollama_generate_func: LLMFunction = Depends(get_ollama_generate)
+    # Inject the LLM function dependency
+    ollama_generate_func: LLMFunction = Depends(get_ollama_generate),
+    # Inject the settings dependency
+    app_settings: Settings = Depends(get_settings)
 ):
     """
     Endpoint for non-streaming chat requests.
-    Receives a prompt and returns the full LLM response.
-    Dependencies (like the LLM function) are injected.
+    Injects dependencies (LLM function, settings) and calls the service layer.
     """
     try:
         logger.info(f"Received non-streaming chat request: {request.prompt[:50]}...")
-        # Service function now receives the injected dependency
-        response = await handle_chat_request(request, ollama_generate_func)
+        # Service function now receives the injected dependencies
+        response = await handle_chat_request(request, ollama_generate_func, app_settings)
         logger.info("Successfully processed non-streaming chat request.")
         return response
     except Exception as e:

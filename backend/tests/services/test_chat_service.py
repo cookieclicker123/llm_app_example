@@ -7,6 +7,7 @@ from datetime import datetime # Import datetime
 from backend.app.models.chat import LLMRequest, LLMResponse, StreamingChunk
 from backend.app.core.types import LLMFunction, LLMStreamingFunction
 from backend.app.services.chat_service import handle_chat_request, handle_chat_stream
+from backend.app.core.config import Settings # Import Settings
 from backend.tests.mocks.mock_llm import (
     create_mock_llm_generate_func,
     create_mock_llm_stream_func,
@@ -31,17 +32,23 @@ def mock_stream_func() -> LLMStreamingFunction:
     # Use high speed for tests to minimize delay
     return create_mock_llm_stream_func(qa_file_path=QA_FILE_PATH, emulation_speed_cps=10000)
 
+@pytest.fixture
+def test_settings() -> Settings:
+    """Provides a Settings instance for service tests."""
+    # Create a basic settings object. We could modify paths here if needed for specific tests.
+    return Settings()
+
 # --- Test Cases --- #
 
 @pytest.mark.asyncio
-async def test_handle_chat_request_success(mock_generate_func: LLMFunction):
+async def test_handle_chat_request_success(mock_generate_func: LLMFunction, test_settings: Settings):
     """Test handle_chat_request successfully calls the injected LLM function and returns a rich LLMResponse."""
     test_prompt = "Hello"
     session_id = "test_session_gen"
     request = LLMRequest(prompt=test_prompt, session_id=session_id)
 
-    # Call the service function, injecting the mock LLM function
-    response = await handle_chat_request(request, mock_generate_func)
+    # Call the service function, injecting the mock LLM function AND settings
+    response = await handle_chat_request(request, mock_generate_func, test_settings)
 
     # --- Assertions for the rich LLMResponse --- #
     assert isinstance(response, LLMResponse)
@@ -58,13 +65,13 @@ async def test_handle_chat_request_success(mock_generate_func: LLMFunction):
     assert response.elapsed_time_ms >= 0
 
 @pytest.mark.asyncio
-async def test_handle_chat_request_not_found(mock_generate_func: LLMFunction):
+async def test_handle_chat_request_not_found(mock_generate_func: LLMFunction, test_settings: Settings):
     """Test handle_chat_request with a prompt not in the mock data."""
     test_prompt = "This prompt definitely does not exist"
     session_id = "test_session_nf"
     request = LLMRequest(prompt=test_prompt, session_id=session_id)
 
-    response = await handle_chat_request(request, mock_generate_func)
+    response = await handle_chat_request(request, mock_generate_func, test_settings)
 
     assert isinstance(response, LLMResponse)
     assert response.response == DEFAULT_NOT_FOUND_RESPONSE

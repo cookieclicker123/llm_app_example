@@ -25,7 +25,7 @@ services:
       # Optional: Uncomment below to mount the *entire* backend code 
       # for live updates without rebuilding (if using --reload with uvicorn).
       # Be cautious, this bypasses the code baked into the image during build.
-      # - ./backend:/app/backend 
+      - ./backend:/app/backend
     # depends_on will be added later when DB, Redis, etc. are defined
     # depends_on:
     #   - db
