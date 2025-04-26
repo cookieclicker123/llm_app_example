@@ -1,7 +1,7 @@
 import asyncio
 import json
 from pathlib import Path
-from typing import AsyncGenerator, Dict
+from typing import AsyncGenerator, Dict, Any
 
 from backend.app.models.chat import LLMRequest, LLMResponse, StreamingChunk
 from backend.app.core.types import LLMFunction, LLMStreamingFunction
@@ -27,20 +27,22 @@ def create_mock_llm_generate_func(
 ) -> LLMFunction:
     """
     Factory function that creates a mock LLM function for generating full responses.
+    It now returns a dictionary, simulating the output of an underlying LLM client,
+    instead of the full LLMResponse object.
 
     Args:
         qa_file_path: Path to the JSON file containing question-answer pairs.
         emulation_speed_cps: Simulated processing speed (adds minor delay).
 
     Returns:
-        An async function conforming to the LLMFunction type alias.
+        An async function conforming to the LLMFunction type alias, returning a dict.
     """
     _lowercase_qa = _load_qa_data(qa_file_path)
     _base_delay = 0.5 / max(1, emulation_speed_cps) # Small delay based on speed
 
-    async def generate_response(request: LLMRequest) -> LLMResponse:
+    async def generate_response(request: LLMRequest) -> Dict[str, Any]:
         """
-        The actual mock LLM function that generates a response.
+        The actual mock LLM function that generates a response dictionary.
         """
         prompt_lower = request.prompt.lower()
         response_text = _lowercase_qa.get(prompt_lower, DEFAULT_NOT_FOUND_RESPONSE)
@@ -48,13 +50,13 @@ def create_mock_llm_generate_func(
         # Simulate some base processing time
         await asyncio.sleep(_base_delay)
 
-        return LLMResponse(
-            response=response_text,
-            request_id=f"mock_gen_{request.session_id or 'req123'}",
-            model_name="mock-qa-gen-v1",
-            finish_reason="stop"
-            # created_at is handled by default_factory
-        )
+        # Return a dictionary, simulating the direct output from an LLM client
+        return {
+            "response": response_text,
+            "model_name": "mock-qa-gen-v1",
+            "finish_reason": "stop"
+            # Other fields like usage stats could be added here if needed
+        }
 
     return generate_response
 

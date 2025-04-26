@@ -1,7 +1,7 @@
 import httpx
 import json
 import logging
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Dict, Any
 
 from backend.app.models.chat import LLMRequest, LLMResponse, StreamingChunk
 from backend.app.core.types import LLMFunction, LLMStreamingFunction
@@ -26,6 +26,7 @@ def create_ollama_generate_func(
 ) -> LLMFunction:
     """
     Factory function that creates an Ollama client function for generating full responses.
+    Returns a dictionary containing the core response data.
 
     Configuration is sourced from the application settings.
 
@@ -34,10 +35,10 @@ def create_ollama_generate_func(
     """
     api_endpoint = f"{base_url}/api/generate"
 
-    async def _generate(request: LLMRequest) -> LLMResponse:
+    async def _generate(request: LLMRequest) -> Dict[str, Any]:
         """
         Nested function that performs the actual API call.
-        Conforms to LLMFunction.
+        Returns a dictionary.
         """
         model_name = request.model_name or default_model
         payload = {
@@ -55,10 +56,11 @@ def create_ollama_generate_func(
                 ollama_data = response.json()
                 logger.info("Received successful response from Ollama.")
 
-                return LLMResponse(
-                    response=ollama_data.get("response", ""),
-                    model_name=ollama_data.get("model", model_name),
-                )
+                return {
+                    "response": ollama_data.get("response", ""),
+                    "model_name": ollama_data.get("model", model_name),
+                    "finish_reason": ollama_data.get("done_reason"),
+                }
 
         except httpx.HTTPStatusError as e:
             logger.error(f"Ollama API error: {e.response.status_code} - {e.response.text}")
@@ -135,7 +137,3 @@ def create_ollama_stream_func(
             raise
 
     return _stream # Return the nested function
-
-# Example of creating and typing the functions (optional, for clarity)
-# ollama_generate: LLMFunction = create_ollama_generate_func()
-# ollama_stream: LLMStreamingFunction = create_ollama_stream_func() 

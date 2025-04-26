@@ -1,6 +1,8 @@
 import pytest
 import pytest_asyncio
 from pathlib import Path
+from uuid import UUID # Import UUID
+from datetime import datetime # Import datetime
 
 from backend.app.models.chat import LLMRequest, LLMResponse, StreamingChunk
 from backend.app.core.types import LLMFunction, LLMStreamingFunction
@@ -33,30 +35,46 @@ def mock_stream_func() -> LLMStreamingFunction:
 
 @pytest.mark.asyncio
 async def test_handle_chat_request_success(mock_generate_func: LLMFunction):
-    """Test handle_chat_request successfully calls the injected LLM function."""
+    """Test handle_chat_request successfully calls the injected LLM function and returns a rich LLMResponse."""
     test_prompt = "Hello"
-    request = LLMRequest(prompt=test_prompt, session_id="test_session_gen")
+    session_id = "test_session_gen"
+    request = LLMRequest(prompt=test_prompt, session_id=session_id)
 
     # Call the service function, injecting the mock LLM function
     response = await handle_chat_request(request, mock_generate_func)
 
+    # --- Assertions for the rich LLMResponse --- #
     assert isinstance(response, LLMResponse)
-    # Check response content based on mock_qa_pairs.json
     assert response.response == "Mock Hi there! This is a predefined answer."
     assert response.model_name == "mock-qa-gen-v1"
-    assert response.request_id is not None
-    assert "test_session_gen" in response.request_id
+    assert response.finish_reason == "stop"
+
+    # Check the new fields
+    assert isinstance(response.response_id, UUID)
+    assert response.request == request # Should match the input request object
+    assert isinstance(response.created_at, datetime)
+    assert isinstance(response.completed_at, datetime)
+    assert isinstance(response.elapsed_time_ms, float)
+    assert response.elapsed_time_ms >= 0
 
 @pytest.mark.asyncio
 async def test_handle_chat_request_not_found(mock_generate_func: LLMFunction):
     """Test handle_chat_request with a prompt not in the mock data."""
     test_prompt = "This prompt definitely does not exist"
-    request = LLMRequest(prompt=test_prompt, session_id="test_session_nf")
+    session_id = "test_session_nf"
+    request = LLMRequest(prompt=test_prompt, session_id=session_id)
 
     response = await handle_chat_request(request, mock_generate_func)
 
     assert isinstance(response, LLMResponse)
-    assert response.response == DEFAULT_NOT_FOUND_RESPONSE # Check default mock response
+    assert response.response == DEFAULT_NOT_FOUND_RESPONSE
+    assert response.model_name == "mock-qa-gen-v1"
+    # Check essential metadata is still present
+    assert isinstance(response.response_id, UUID)
+    assert response.request == request
+    assert isinstance(response.created_at, datetime)
+    assert isinstance(response.completed_at, datetime)
+    assert isinstance(response.elapsed_time_ms, float)
 
 @pytest.mark.asyncio
 async def test_handle_chat_stream_success(mock_stream_func: LLMStreamingFunction):

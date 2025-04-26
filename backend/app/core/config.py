@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
+from pathlib import Path # Import Path
 
 class Settings(BaseSettings):
     """Application settings managed by Pydantic BaseSettings.
@@ -19,6 +20,9 @@ class Settings(BaseSettings):
     OLLAMA_BASE_URL: str = "http://localhost:11434" # Default for local Ollama
     OLLAMA_DEFAULT_MODEL: str = "deepseek-r1:14b" # Example default model
     OLLAMA_REQUEST_TIMEOUT: int = 60 # Timeout in seconds
+
+    # Directory for saving chat responses (relative to project root assumed by default usage)
+    CHAT_RESPONSE_SAVE_DIR: Path = Path("backend/tmp/json_sessions")
 
     # Add other settings like Database URL, Redis URL, etc., later
     # DATABASE_URL: str = "postgresql://user:password@host:port/db"

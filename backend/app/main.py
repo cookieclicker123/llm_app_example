@@ -1,7 +1,20 @@
 from fastapi import FastAPI
+import logging # Import logging
+import sys # Import sys to output to stdout
 
 # Import the router
 from backend.app.api import chat_router
+
+# --- Logging Configuration --- #
+# Configure logging to output INFO level messages to stdout
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    stream=sys.stdout, # Ensure logs go to stdout for Docker
+)
+# Set logger for the specific module if needed, but basicConfig for root should suffice
+# logging.getLogger("backend.app.services.chat_service").setLevel(logging.DEBUG)
+# ---------------------------- #
 
 app = FastAPI(
     title="End-to-End LLM App",

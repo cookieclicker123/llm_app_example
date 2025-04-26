@@ -3,7 +3,7 @@ import pytest_asyncio
 import json
 import os
 from pathlib import Path
-from backend.app.models.chat import LLMRequest
+from backend.app.models.chat import LLMRequest, LLMResponse
 from backend.app.core.types import LLMFunction, LLMStreamingFunction
 # Import factory functions and constant
 from backend.tests.mocks.mock_llm import (
@@ -15,7 +15,8 @@ from backend.tests.mocks.mock_llm import (
 # Define the path to the fixtures directory relative to this test file
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 QA_FILE_PATH = FIXTURES_DIR / "mock_qa_pairs.json"
-TMP_DIR = Path(__file__).parent.parent.parent / "tmp" # Assumes tmp is at project root
+# Define the path for test JSON outputs from this module
+TEST_OUTPUT_DIR = FIXTURES_DIR / "test_json_sessions" / "mock_tests"
 
 @pytest.fixture(scope="session")
 def mock_qa_data() -> dict:
@@ -42,23 +43,24 @@ async def test_mock_generate_response_found(mock_generate_func: LLMFunction, moc
     expected_response = mock_qa_data[test_prompt.lower()]
 
     request = LLMRequest(prompt=test_prompt)
-    # Call the function returned by the fixture
-    response = await mock_generate_func(request)
+    response_dict = await mock_generate_func(request)
 
-    assert response.response == expected_response
-    assert response.model_name == "mock-qa-gen-v1" # Updated model name check
-    assert response.finish_reason == "stop"
+    assert isinstance(response_dict, dict)
+    assert response_dict["response"] == expected_response
+    assert response_dict["model_name"] == "mock-qa-gen-v1"
+    assert response_dict["finish_reason"] == "stop"
 
 @pytest.mark.asyncio
 async def test_mock_generate_response_not_found(mock_generate_func: LLMFunction):
     """Tests generate_response when the prompt is not found."""
     test_prompt = "This prompt does not exist"
     request = LLMRequest(prompt=test_prompt)
-    # Call the function returned by the fixture
-    response = await mock_generate_func(request)
+    response_dict = await mock_generate_func(request)
 
-    assert response.response == DEFAULT_NOT_FOUND_RESPONSE
-    assert response.model_name == "mock-qa-gen-v1"
+    assert isinstance(response_dict, dict)
+    assert response_dict["response"] == DEFAULT_NOT_FOUND_RESPONSE
+    assert response_dict["model_name"] == "mock-qa-gen-v1"
+    assert response_dict.get("finish_reason") == "stop"
 
 @pytest.mark.asyncio
 async def test_mock_stream_response_found(mock_stream_func: LLMStreamingFunction, mock_qa_data: dict):
@@ -68,7 +70,6 @@ async def test_mock_stream_response_found(mock_stream_func: LLMStreamingFunction
 
     request = LLMRequest(prompt=test_prompt)
     chunks = []
-    # Call the function returned by the fixture
     async for chunk in mock_stream_func(request):
         chunks.append(chunk)
 
@@ -81,7 +82,6 @@ async def test_mock_stream_response_not_found(mock_stream_func: LLMStreamingFunc
     test_prompt = "Another prompt that does not exist"
     request = LLMRequest(prompt=test_prompt)
     chunks = []
-    # Call the function returned by the fixture
     async for chunk in mock_stream_func(request):
         chunks.append(chunk)
 
@@ -89,24 +89,23 @@ async def test_mock_stream_response_not_found(mock_stream_func: LLMStreamingFunc
     assert reassembled_response == DEFAULT_NOT_FOUND_RESPONSE
 
 @pytest.mark.asyncio
-async def test_mock_output_to_tmp_file(mock_generate_func: LLMFunction, mock_qa_data: dict):
-    """Tests generating a response and writing its JSON to a tmp file (for verification)."""
-    # Ensure tmp directory exists
-    TMP_DIR.mkdir(exist_ok=True)
-    output_file = TMP_DIR / "mock_llm_response.json"
+async def test_mock_output_to_test_sessions_file(mock_generate_func: LLMFunction, mock_qa_data: dict):
+    """Tests generating a response dict and writing it to the mock test sessions directory."""
+    # Ensure test output directory exists
+    TEST_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    output_file = TEST_OUTPUT_DIR / "test_mock_llm_output.json"
 
     test_prompt = "What is the capital of France?"
     request = LLMRequest(prompt=test_prompt)
-    # Call the function returned by the fixture
-    response = await mock_generate_func(request)
+    response_dict = await mock_generate_func(request)
 
-    # Write the response model to JSON
+    # Write the dictionary to JSON
     with open(output_file, 'w') as f:
-        f.write(response.model_dump_json(indent=2))
+        json.dump(response_dict, f, indent=2) # Use json.dump for dict
 
     # Basic check: verify the file was created and is not empty
     assert output_file.is_file()
     assert output_file.stat().st_size > 0
 
-    # Clean up the file after test
-    # os.remove(output_file) # Optional: uncomment to remove file after test run 
+    # Optional: Clean up the file after test
+    # output_file.unlink() # More robust way to remove Path object 

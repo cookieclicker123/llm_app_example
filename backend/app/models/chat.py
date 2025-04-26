@@ -1,6 +1,8 @@
 from pydantic import BaseModel, Field
 from datetime import datetime, UTC
 from typing import Any, Optional
+import uuid # Import uuid for generating unique IDs
+from uuid import UUID # Import UUID for type hinting
 
 class LLMRequest(BaseModel):
     """
@@ -14,11 +16,14 @@ class LLMRequest(BaseModel):
 
 class LLMResponse(BaseModel):
     """
-    Represents a response from the LLM service.
+    Represents a rich response from the LLM service, including metadata.
     """
+    response_id: UUID = Field(default_factory=uuid.uuid4, description="Unique identifier for this specific request-response pair.")
+    request: LLMRequest = Field(..., description="The original request object that led to this response.")
     response: str = Field(..., description="The generated response text from the LLM.")
-    request_id: Optional[str] = Field(None, description="An optional identifier linking this response to the original request.")
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC), description="Timestamp of when the response was generated.")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC), description="Timestamp of when the request processing started.")
+    completed_at: Optional[datetime] = Field(None, description="Timestamp of when the response generation completed.")
+    elapsed_time_ms: Optional[float] = Field(None, description="Total time taken for the LLM to generate the response, in milliseconds.")
     model_name: Optional[str] = Field(None, description="The name of the model that generated the response.")
     finish_reason: Optional[str] = Field(None, description="Reason why the generation finished (e.g., 'stop', 'length'). Provided by some LLM APIs.")
 

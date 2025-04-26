@@ -14,10 +14,18 @@ services:
     # Useful for overriding defaults or setting secrets without hardcoding
     env_file:
       - .env
-    # Optional: Mount the backend code directory for live reloading during development
-    # Note: Changes might require rebuilding the image if dependencies change
-    # volumes:
-    #  - ./backend:/app/backend 
+    # Mount volumes to persist data and potentially enable code updates
+    volumes:
+      # Map the local tmp directory to the container's tmp directory
+      # This allows us to see generated files like JSON sessions locally
+      - ./backend/tmp:/app/backend/tmp
+      # Map the local tests directory to the container's tests directory
+      # Ensures tests run with the latest local code during development
+      - ./backend/tests:/app/backend/tests
+      # Optional: Uncomment below to mount the *entire* backend code 
+      # for live updates without rebuilding (if using --reload with uvicorn).
+      # Be cautious, this bypasses the code baked into the image during build.
+      # - ./backend:/app/backend 
     # depends_on will be added later when DB, Redis, etc. are defined
     # depends_on:
     #   - db
