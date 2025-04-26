@@ -64,8 +64,17 @@ async def main():
                     # Add model_name or options here if needed
                 }
 
-                # --- Call non-streaming endpoint first (for saving) --- #
-                await call_chat_endpoint(client, payload)
+                # --- Call non-streaming endpoint in the background --- #
+                # Create a task to run the saving call concurrently
+                # We don't await it here, letting it run independently
+                save_task = asyncio.create_task(
+                    call_chat_endpoint(client, payload),
+                    name=f"save_task_{payload['prompt'][:10]}" # Optional name for debugging
+                )
+                # Add callback to log if the background task fails (optional but good practice)
+                save_task.add_done_callback(
+                    lambda t: logger.error(f"Background save task failed: {t.exception()}") if t.exception() else None
+                )
                 # -------------------------------------------------------- #
 
                 # --- Call streaming endpoint (for display) --- #
