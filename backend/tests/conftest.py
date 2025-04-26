@@ -1,4 +1,5 @@
 import pytest
+from typing import AsyncIterator # Import AsyncIterator
 # Use TestClient for testing FastAPI apps directly
 from fastapi.testclient import TestClient
 # Import ASGITransport for direct ASGI testing with httpx
@@ -15,8 +16,10 @@ def client_sync() -> TestClient:
     with TestClient(app) as c:
         yield c
 
-@pytest.fixture(scope="session")
-async def client() -> AsyncClient:
+# Change scope to "function" for simplicity with pytest-asyncio
+@pytest.fixture(scope="function")
+# Hint that the function returns an async iterator yielding AsyncClient
+async def client() -> AsyncIterator[AsyncClient]:
     """Provides an asynchronous httpx client configured to run against the FastAPI app."""
     # Use httpx.AsyncClient with ASGITransport pointing to the app
     transport = ASGITransport(app=app)

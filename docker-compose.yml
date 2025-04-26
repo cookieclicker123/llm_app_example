@@ -1,22 +1,30 @@
 version: '3.8'
 
 services:
-  # Backend service definition will go here
-  # backend:
-  #   build:
-  #     context: ./backend
-  #   ports:
-  #     - "8000:8000"
-  #   volumes:
-  #     - ./backend:/app
-  #   environment:
-  #     - DATABASE_URL=postgresql://user:password@db:5432/appdb
-  #     - REDIS_URL=redis://redis:6379
-  #   depends_on:
-  #     - db
-  #     - redis
+  backend:
+    # Build the image using the Dockerfile in the ./backend directory
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    # Map port 8000 on the host to port 8000 in the container
+    ports:
+      - "8000:8000"
+    # Set environment variables from a .env file in the project root
+    # Pydantic settings in config.py will automatically pick these up
+    # Useful for overriding defaults or setting secrets without hardcoding
+    env_file:
+      - .env
+    # Optional: Mount the backend code directory for live reloading during development
+    # Note: Changes might require rebuilding the image if dependencies change
+    # volumes:
+    #  - ./backend:/app/backend 
+    # depends_on will be added later when DB, Redis, etc. are defined
+    # depends_on:
+    #   - db
+    #   - redis
+    #   - ollama # If running Ollama in compose
 
-  # Database service (PostgreSQL)
+  # Database service (PostgreSQL) - Uncomment and configure later
   # db:
   #   image: postgres:15
   #   volumes:
@@ -25,19 +33,21 @@ services:
   #     - POSTGRES_DB=appdb
   #     - POSTGRES_USER=user
   #     - POSTGRES_PASSWORD=password
+  #   env_file:
+  #     - .env # Could also load DB secrets from here
 
-  # Cache service (Redis)
+  # Cache service (Redis) - Uncomment and configure later
   # redis:
   #   image: redis:7
 
-  # Ollama service
+  # Ollama service - Uncomment and configure later if running via Compose
   # ollama:
-  #   image: ollama/ollama # Or specific version
+  #   image: ollama/ollama
   #   ports:
   #     - "11434:11434"
   #   volumes:
-  #     - ollama_data:/root/.ollama # Persist downloaded models
-  #   # Add GPU support if needed/available
+  #     - ollama_data:/root/.ollama
+  #   # GPU support (example)
   #   # deploy:
   #   #   resources:
   #   #     reservations:
@@ -46,7 +56,7 @@ services:
   #   #           count: 1
   #   #           capabilities: [gpu]
 
-  # Monitoring services (Prometheus, Grafana)
+  # Monitoring services (Prometheus, Grafana) - Uncomment and configure later
   # prometheus:
   #   image: prom/prometheus
   #   volumes:
@@ -66,7 +76,7 @@ volumes:
   ollama_data:
   grafana_data:
 
-# Network configuration (optional, but good practice)
+# Network configuration (optional, but good practice) - Uncomment later
 # networks:
 #   app_network:
 #     driver: bridge 

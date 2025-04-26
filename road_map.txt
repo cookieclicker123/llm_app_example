@@ -1,0 +1,62 @@
+Moving Towards Production:
+You're right, the next steps involve adding layers of functionality crucial for a real-world, production-ready application. Your suggestions align well with standard practices. Let's refine the list and think about the order and design considerations.
+Proposed Roadmap & Design Thoughts:
+Dockerization: (Your suggested next step - Agreed)
+Goal: Package the FastAPI application, its dependencies, and runtime into a container image for portability, consistent environments (dev/staging/prod), and easier deployment.
+Tools: Dockerfile, docker-compose.yml (for local multi-container setups later, e.g., app + db + redis).
+Design Considerations:
+Multi-stage builds: Use a build stage to install dependencies (including dev ones if needed for intermediate steps) and copy only the necessary artifacts and production dependencies to a smaller final image.
+Non-root user: Run the application inside the container as a non-root user for security.
+Environment Variables: Pass configuration (like OLLAMA_BASE_URL, DATABASE_URL later) into the container via environment variables at runtime, leveraging our pydantic-settings setup.
+.dockerignore: Exclude unnecessary files/folders (.venv, .pytest_cache, __pycache__, etc.) from the Docker build context.
+Pseudo Code (Dockerfile):
+Apply to road_map.txt
+]
+(Note: Specific Python paths/package install locations might vary)
+Database Integration (PostgreSQL + SQLAlchemy):
+Goal: Persist chat history (prompts, responses, session info) to allow for conversation context and future analysis.
+Tools: PostgreSQL (database), SQLAlchemy (ORM, using its async support), asyncpg (async PostgreSQL driver), Alembic (database migrations).
+Design Considerations:
+Models (schemas/): Define SQLAlchemy models for ChatSession and ChatMessage (or similar). Include relationships.
+CRUD Layer (crud/): Create functions to Create, Read, Update, Delete chat messages and sessions (create_message, get_session_history, etc.). These functions will take an AsyncSession object.
+Async Session Management: Use FastAPI dependency (Depends) to provide an AsyncSession to API endpoints or service functions that need database access. Implement an async def get_db() dependency provider.
+Migrations: Initialize Alembic and create migration scripts whenever the SQLAlchemy models change.
+Pseudo Code (schemas/message.py, crud/chat.py, database.py): (Similar to thought process examples)
+Session Management:
+Goal: Maintain conversation context. Use the session ID (already in LLMRequest) to link messages together in the database.
+Tools: Database (PostgreSQL).
+Design Considerations:
+Modify handle_chat_request / handle_chat_stream to:
+Accept the database session (AsyncSession) as an argument (via dependency injection).
+Retrieve relevant history for the given session_id from the DB using CRUD functions.
+(Potentially) Pass this history context to the Ollama client (if the model supports it via the context field).
+Save the new prompt and the generated response to the database linked to the session_id.
+Task Queuing (Redis + Arq/Celery): (User suggestion - Good fit)
+Goal: Offload tasks that might block the main API event loop, such as potentially very long LLM generations, post-processing of responses (e.g., safety checks, formatting), or saving complex analytics.
+Tools: Redis (message broker/result backend), arq (async-native, simpler) or Celery (feature-rich, potentially requires separate result backend setup like redis or rpc). Given our async focus, arq is a strong contender.
+Design Considerations:
+Worker Setup: Define worker settings and task functions (e.g., process_llm_request_task). Run the worker process separately (likely another container in Docker Compose).
+Task Definition: Define the data passed to the task (e.g., prompt, session_id).
+Integration: Decide how API endpoints trigger tasks. FastAPI's BackgroundTasks could enqueue a job, or the endpoint could directly enqueue to Redis/Arq. Consider how results are retrieved (polling, websockets, or if the task updates the DB directly).
+Pseudo Code (tasks.py): (Similar to thought process example)
+Enhanced Configuration & Secrets Management:
+Goal: Improve handling of sensitive information (DB passwords, API keys) and potentially have different configurations for different environments (dev, prod).
+Tools: pydantic-settings, environment variables, Docker secrets (maybe), Cloud provider secret managers (later).
+Design: Load secrets strictly from environment variables (not defaults in code or .env files committed to git). Use .env for non-secret local development overrides only.
+Authentication & Authorization:
+Goal: Secure the API, potentially associating chat sessions with specific users.
+Tools: FastAPI's security utilities (OAuth2PasswordBearer, HTTPBasicCredentials), python-jose (for JWT), passlib (for password hashing).
+Design: Add User model (DB), registration/login endpoints, password hashing, JWT generation/validation, protected route dependencies (Depends(get_current_user)).
+Monitoring & Observability:
+Goal: Gain insight into application performance, errors, and resource usage in production.
+Tools: prometheus-fastapi-instrumentator, Prometheus, Grafana, structured logging.
+Design: Add Prometheus middleware, configure logging formatters (e.g., JSON), set up Prometheus/Grafana (likely via Docker Compose locally).
+CI/CD Pipeline:
+Goal: Automate testing, Docker builds, and deployments.
+Tools: GitHub Actions (or GitLab CI, Jenkins, etc.).
+Design: Create workflow files (.github/workflows/) with steps for checkout, setup Python, install deps, lint, test, build Docker image, push to registry (like GCP Artifact Registry), deploy (to Cloud Run, GKE, etc.).
+LLM Evaluation:
+Goal: Assess the quality and performance of the LLM responses.
+Tools: deepeval, ragas, custom metrics.
+Design: Integrate evaluation steps, potentially as background tasks or a separate evaluation pipeline, logging results to DB or monitoring system.
+This ordered list provides a path forward, starting with containerization as you suggested, then building out core persistence and state management before moving to more advanced features like task queues, security, and observability. Each step builds upon the previous ones.
