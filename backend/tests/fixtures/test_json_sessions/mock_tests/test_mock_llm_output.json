@@ -1,5 +1,0 @@
-{
-  "response": "The capital of France is Paris, according to this mock data.",
-  "model_name": "mock-qa-gen-v1",
-  "finish_reason": "stop"
-}
