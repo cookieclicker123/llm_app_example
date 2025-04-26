@@ -10,7 +10,7 @@ class LLMRequest(BaseModel):
     """
     prompt: str = Field(..., description="The user's input prompt for the LLM.")
     session_id: Optional[str] = Field(None, description="An optional session identifier for maintaining conversation context.")
-    model_name: Optional[str] = Field(None, description="Optional specific model name to use (if supported by the backend).")
+    model_name: str = Field(..., description="Specific model name to use (e.g., 'deepseek-r1:14b').")
     options: Optional[dict[str, Any]] = Field(None, description="Optional dictionary for passing specific LLM parameters like temperature, max_tokens, etc.")
 
 
@@ -24,7 +24,7 @@ class LLMResponse(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC), description="Timestamp of when the request processing started.")
     completed_at: Optional[datetime] = Field(None, description="Timestamp of when the response generation completed.")
     elapsed_time_ms: Optional[float] = Field(None, description="Total time taken for the LLM to generate the response, in milliseconds.")
-    model_name: Optional[str] = Field(None, description="The name of the model that generated the response.")
+    model_name: str = Field(..., description="The name of the model that generated the response.")
     finish_reason: Optional[str] = Field(None, description="Reason why the generation finished (e.g., 'stop', 'length'). Provided by some LLM APIs.")
 
 # Type alias for data chunks yielded during streaming

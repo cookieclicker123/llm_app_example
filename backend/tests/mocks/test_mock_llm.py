@@ -42,7 +42,7 @@ async def test_mock_generate_response_found(mock_generate_func: LLMFunction, moc
     test_prompt = "Hello"
     expected_response = mock_qa_data[test_prompt.lower()]
 
-    request = LLMRequest(prompt=test_prompt)
+    request = LLMRequest(prompt=test_prompt, model_name="test-model")
     response_dict = await mock_generate_func(request)
 
     assert isinstance(response_dict, dict)
@@ -54,7 +54,7 @@ async def test_mock_generate_response_found(mock_generate_func: LLMFunction, moc
 async def test_mock_generate_response_not_found(mock_generate_func: LLMFunction):
     """Tests generate_response when the prompt is not found."""
     test_prompt = "This prompt does not exist"
-    request = LLMRequest(prompt=test_prompt)
+    request = LLMRequest(prompt=test_prompt, model_name="test-model-nf")
     response_dict = await mock_generate_func(request)
 
     assert isinstance(response_dict, dict)
@@ -68,7 +68,7 @@ async def test_mock_stream_response_found(mock_stream_func: LLMStreamingFunction
     test_prompt = "Tell me a joke"
     expected_response = mock_qa_data[test_prompt.lower()]
 
-    request = LLMRequest(prompt=test_prompt)
+    request = LLMRequest(prompt=test_prompt, model_name="test-stream-model")
     chunks = []
     async for chunk in mock_stream_func(request):
         chunks.append(chunk)
@@ -80,7 +80,7 @@ async def test_mock_stream_response_found(mock_stream_func: LLMStreamingFunction
 async def test_mock_stream_response_not_found(mock_stream_func: LLMStreamingFunction):
     """Tests stream_response yields correct chunks for a not-found prompt."""
     test_prompt = "Another prompt that does not exist"
-    request = LLMRequest(prompt=test_prompt)
+    request = LLMRequest(prompt=test_prompt, model_name="test-stream-model-nf")
     chunks = []
     async for chunk in mock_stream_func(request):
         chunks.append(chunk)
@@ -96,7 +96,7 @@ async def test_mock_output_to_test_sessions_file(mock_generate_func: LLMFunction
     output_file = TEST_OUTPUT_DIR / "test_mock_llm_output.json"
 
     test_prompt = "What is the capital of France?"
-    request = LLMRequest(prompt=test_prompt)
+    request = LLMRequest(prompt=test_prompt, model_name="test-file-model")
     response_dict = await mock_generate_func(request)
 
     # Write the dictionary to JSON

@@ -53,35 +53,42 @@ async def handle_chat_request(
 
     # --- Extract required data from raw output --- #
     response_text = "Error: Could not determine response text."
-    model_name = None
+    # Initialize model_name from the request, as it's guaranteed to be there now
+    model_name = request.model_name 
     finish_reason = None
 
-    if isinstance(raw_llm_output, LLMResponse): # Output from real ollama_client.py
+    # Try to get more specific info from the actual LLM call output
+    if isinstance(raw_llm_output, LLMResponse): 
         logger.debug("Processing LLMResponse object from llm_generate_func.")
-        response_text = raw_llm_output.response # Required field
-        model_name = raw_llm_output.model_name # Optional field
-        # finish_reason might not be present in this object, default to None
+        response_text = raw_llm_output.response
+        # Update model_name only if the raw output explicitly provides it
+        if raw_llm_output.model_name:
+            model_name = raw_llm_output.model_name 
         finish_reason = getattr(raw_llm_output, 'finish_reason', None)
 
-    elif isinstance(raw_llm_output, dict): # Output from mock_llm.py
+    elif isinstance(raw_llm_output, dict): 
         logger.debug("Processing dict object from llm_generate_func.")
         response_text = raw_llm_output.get("response", "Error: Missing 'response' key.")
-        model_name = raw_llm_output.get("model_name")
+        # Update model_name only if the raw output explicitly provides it
+        model_name_from_output = raw_llm_output.get("model_name")
+        if model_name_from_output:
+            model_name = model_name_from_output
         finish_reason = raw_llm_output.get("finish_reason")
 
     else:
         logger.error(f"Unexpected output type from llm_generate_func: {type(raw_llm_output)}")
         response_text = f"Error: Unexpected LLM output type '{type(raw_llm_output).__name__}'."
+        # Keep model_name from the original request
 
     # --- Construct the final, rich LLMResponse --- #
     llm_response = LLMResponse(
         response_id=response_id,
-        request=request, # This is the key field that was missing
+        request=request, 
         response=response_text,
         created_at=created_at,
         completed_at=completed_at,
         elapsed_time_ms=elapsed_time_ms,
-        model_name=model_name,
+        model_name=model_name, # Now guaranteed to be non-null
         finish_reason=finish_reason
     )
 

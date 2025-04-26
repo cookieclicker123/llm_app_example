@@ -5,6 +5,9 @@ import json
 import logging
 import uuid # Import uuid for unique client session
 
+# Import settings to get the default model
+from backend.app.core.config import settings 
+
 # Configure basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -61,7 +64,7 @@ async def main():
                 payload = {
                     "prompt": user_input,
                     "session_id": session_id,
-                    # Add model_name or options here if needed
+                    "model_name": settings.OLLAMA_DEFAULT_MODEL # Use default model from settings
                 }
 
                 # --- Call non-streaming endpoint in the background --- #

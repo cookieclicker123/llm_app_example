@@ -45,7 +45,7 @@ async def test_handle_chat_request_success(mock_generate_func: LLMFunction, test
     """Test handle_chat_request successfully calls the injected LLM function and returns a rich LLMResponse."""
     test_prompt = "Hello"
     session_id = "test_session_gen"
-    request = LLMRequest(prompt=test_prompt, session_id=session_id)
+    request = LLMRequest(prompt=test_prompt, session_id=session_id, model_name="test-model-svc")
 
     # Call the service function, injecting the mock LLM function AND settings
     response = await handle_chat_request(request, mock_generate_func, test_settings)
@@ -64,12 +64,15 @@ async def test_handle_chat_request_success(mock_generate_func: LLMFunction, test
     assert isinstance(response.elapsed_time_ms, float)
     assert response.elapsed_time_ms >= 0
 
+    # Add assertion for request model name
+    assert response.request.model_name == "test-model-svc"
+
 @pytest.mark.asyncio
 async def test_handle_chat_request_not_found(mock_generate_func: LLMFunction, test_settings: Settings):
     """Test handle_chat_request with a prompt not in the mock data."""
     test_prompt = "This prompt definitely does not exist"
     session_id = "test_session_nf"
-    request = LLMRequest(prompt=test_prompt, session_id=session_id)
+    request = LLMRequest(prompt=test_prompt, session_id=session_id, model_name="test-model-svc-nf")
 
     response = await handle_chat_request(request, mock_generate_func, test_settings)
 
@@ -83,12 +86,15 @@ async def test_handle_chat_request_not_found(mock_generate_func: LLMFunction, te
     assert isinstance(response.completed_at, datetime)
     assert isinstance(response.elapsed_time_ms, float)
 
+    # Add assertion for request model name
+    assert response.request.model_name == "test-model-svc-nf"
+
 @pytest.mark.asyncio
 async def test_handle_chat_stream_success(mock_stream_func: LLMStreamingFunction):
     """Test handle_chat_stream successfully yields chunks from the injected LLM function."""
     test_prompt = "Tell me a joke"
     expected_full_response = "Why don't scientists trust atoms? Because they make up everything! (Mock Joke)"
-    request = LLMRequest(prompt=test_prompt, session_id="test_session_stream")
+    request = LLMRequest(prompt=test_prompt, session_id="test_session_stream", model_name="test-stream-svc")
 
     chunks = []
     # Call the service function, injecting the mock streaming LLM function
@@ -103,7 +109,7 @@ async def test_handle_chat_stream_success(mock_stream_func: LLMStreamingFunction
 async def test_handle_chat_stream_not_found(mock_stream_func: LLMStreamingFunction):
     """Test handle_chat_stream with a prompt not in the mock data."""
     test_prompt = "Another prompt that surely does not exist"
-    request = LLMRequest(prompt=test_prompt, session_id="test_session_stream_nf")
+    request = LLMRequest(prompt=test_prompt, session_id="test_session_stream_nf", model_name="test-stream-svc-nf")
 
     chunks = []
     async for chunk in handle_chat_stream(request, mock_stream_func):
@@ -112,5 +118,8 @@ async def test_handle_chat_stream_not_found(mock_stream_func: LLMStreamingFuncti
 
     reassembled_response = "".join(chunks)
     assert reassembled_response == DEFAULT_NOT_FOUND_RESPONSE
+
+    # Add model_name to request
+    assert request.model_name == "test-stream-svc-nf"
 
 # Add more tests later for error handling within the service if needed 

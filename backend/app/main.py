@@ -1,6 +1,9 @@
 from fastapi import FastAPI
 import logging # Import logging
 import sys # Import sys to output to stdout
+from contextlib import asynccontextmanager
+import httpx
+from backend.app.core.config import settings # Assuming settings are needed
 
 # Import the router
 from backend.app.api import chat_router
@@ -16,10 +19,37 @@ logging.basicConfig(
 # logging.getLogger("backend.app.services.chat_service").setLevel(logging.DEBUG)
 # ---------------------------- #
 
+logger = logging.getLogger(__name__)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Code to run on startup
+    logger.info("Application startup: Warming up default Ollama model...")
+    warmup_payload = {
+        "model": settings.OLLAMA_DEFAULT_MODEL,
+        "prompt": "Warmup prompt (content doesn't matter much)", # Simple prompt
+        "stream": False,
+        "keep_alive": "5m" # Keep it warm for 5 mins after warmup
+    }
+    try:
+        async with httpx.AsyncClient(timeout=settings.OLLAMA_REQUEST_TIMEOUT * 2) as client: # Longer timeout for warmup
+            # Use the URL from settings
+            api_endpoint = f"{settings.OLLAMA_BASE_URL}/api/generate"
+            response = await client.post(api_endpoint, json=warmup_payload)
+            response.raise_for_status() # Check if warmup call was successful
+            logger.info(f"Ollama model '{settings.OLLAMA_DEFAULT_MODEL}' warmup successful.")
+    except Exception as e:
+        logger.error(f"Ollama model warmup failed: {e}")
+
+    yield
+    # Code to run on shutdown (if any)
+    logger.info("Application shutdown.")
+
 app = FastAPI(
     title="End-to-End LLM App",
     description="An application demonstrating best practices for building LLM apps.",
     version="0.1.0",
+    lifespan=lifespan # Add the lifespan manager
 )
 
 @app.get("/")

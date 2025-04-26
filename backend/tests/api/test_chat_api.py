@@ -74,26 +74,31 @@ def setup_api_test_overrides():
 # --- Test Cases --- #
 
 @pytest.mark.asyncio
-async def test_chat_endpoint_success(client: AsyncClient): # No mock patching needed now
+async def test_chat_endpoint_success(client: AsyncClient):
     """Test successful non-streaming chat request using dependency override."""
-    request_data = {"prompt": "Hello", "session_id": "api_test_gen_dep"}
+    request_data = {
+        "prompt": "Hello", 
+        "session_id": "api_test_gen_dep",
+        "model_name": "mock-model-request"
+    }
     expected_response_text = "Mock Hi there! This is a predefined answer."
-    expected_model = "mock-qa-gen-v1"
+    expected_model_in_response = "mock-qa-gen-v1" 
 
     response = await client.post("/api/v1/chat/", json=request_data)
 
     assert response.status_code == 200
     response_json = response.json()
 
-    # --- Assertions for the new LLMResponse structure --- #
-    assert "response_id" in response_json
-    assert isinstance(UUID(response_json["response_id"]), UUID) # Check if valid UUID
-
-    assert "request" in response_json
     assert response_json["request"]["prompt"] == request_data["prompt"]
     assert response_json["request"]["session_id"] == request_data["session_id"]
+    assert response_json["request"]["model_name"] == request_data["model_name"]
 
     assert response_json["response"] == expected_response_text
+    assert response_json["model_name"] == expected_model_in_response
+    assert response_json["finish_reason"] == "stop"
+
+    assert "response_id" in response_json
+    assert isinstance(UUID(response_json["response_id"]), UUID)
 
     assert "created_at" in response_json
     assert isinstance(datetime.fromisoformat(response_json["created_at"]), datetime)
@@ -105,20 +110,15 @@ async def test_chat_endpoint_success(client: AsyncClient): # No mock patching ne
     assert isinstance(response_json["elapsed_time_ms"], float)
     assert response_json["elapsed_time_ms"] > 0
 
-    assert response_json["model_name"] == expected_model
-    assert response_json["finish_reason"] == "stop"
-
-    # --- Old assertions (remove or update) ---
-    # assert response_json["response"] == "Mock Hi there! This is a predefined answer."
-    # assert response_json["model_name"] == "mock-qa-gen-v1"
-    # assert "created_at" in response_json
-    # assert "api_test_gen_dep" in response_json["request_id"] # request_id is replaced
-
 @pytest.mark.asyncio
-async def test_chat_stream_endpoint_success(client: AsyncClient): # No mock patching needed now
+async def test_chat_stream_endpoint_success(client: AsyncClient):
     """Test successful streaming chat request using dependency override."""
     expected_full_response = "Why don't scientists trust atoms? Because they make up everything! (Mock Joke)"
-    request_data = {"prompt": "Tell me a joke", "session_id": "api_test_stream_dep"}
+    request_data = {
+        "prompt": "Tell me a joke", 
+        "session_id": "api_test_stream_dep",
+        "model_name": "mock-stream-request"
+    }
 
     response = await client.post("/api/v1/chat/stream", json=request_data)
 
@@ -131,31 +131,45 @@ async def test_chat_stream_endpoint_success(client: AsyncClient): # No mock patc
 @pytest.mark.asyncio
 async def test_chat_endpoint_not_found(client: AsyncClient):
     """Test non-streaming endpoint with a prompt not in mock data."""
-    request_data = {"prompt": "Does not exist", "session_id": "api_test_gen_nf"}
+    request_data = {
+        "prompt": "Does not exist", 
+        "session_id": "api_test_gen_nf",
+        "model_name": "mock-model-request-nf"
+    }
+    expected_model_in_response = "mock-qa-gen-v1"
+
     response = await client.post("/api/v1/chat/", json=request_data)
     assert response.status_code == 200
     response_json = response.json()
 
-    # Check essential fields for the "not found" case
     assert response_json["response"] == DEFAULT_NOT_FOUND_RESPONSE
+    assert response_json["request"]["model_name"] == request_data["model_name"]
+    assert response_json["model_name"] == expected_model_in_response
+
     assert "response_id" in response_json
     assert isinstance(UUID(response_json["response_id"]), UUID)
+
     assert "request" in response_json
     assert response_json["request"]["prompt"] == request_data["prompt"]
+    assert response_json["request"]["session_id"] == request_data["session_id"]
+
     assert "created_at" in response_json
     assert isinstance(datetime.fromisoformat(response_json["created_at"]), datetime)
+
     assert "completed_at" in response_json
     assert isinstance(datetime.fromisoformat(response_json["completed_at"]), datetime)
+
     assert "elapsed_time_ms" in response_json
     assert isinstance(response_json["elapsed_time_ms"], float)
-    # model_name and finish_reason might still be present depending on mock implementation
-    assert response_json.get("model_name") == "mock-qa-gen-v1"
-    assert response_json.get("finish_reason") == "stop"
 
 @pytest.mark.asyncio
 async def test_chat_stream_endpoint_not_found(client: AsyncClient):
     """Test streaming endpoint with a prompt not in mock data."""
-    request_data = {"prompt": "Also does not exist", "session_id": "api_test_stream_nf"}
+    request_data = {
+        "prompt": "Also does not exist", 
+        "session_id": "api_test_stream_nf",
+        "model_name": "mock-stream-request-nf"
+    }
     response = await client.post("/api/v1/chat/stream", json=request_data)
     assert response.status_code == 200
     streamed_text = await response.aread()
