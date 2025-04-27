@@ -81,7 +81,8 @@ Once the `backend` container is running:
           -H "Content-Type: application/json" \
           -d '{
                 "prompt": "Hello",
-                "session_id": "curl_test_1"
+                "session_id": "curl_test_1",
+                "model_name": "deepseek-r1:14b"
               }'
         ```
 
@@ -91,7 +92,8 @@ Once the `backend` container is running:
           -H "Content-Type: application/json" \
           -d '{
                 "prompt": "Tell me a joke",
-                "session_id": "curl_test_2"
+                "session_id": "curl_test_2",
+                "model_name": "deepseek-r1:14b"
               }' --no-buffer
         # --no-buffer is helpful to see stream output immediately
         ```
