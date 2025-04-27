@@ -3,19 +3,24 @@ import httpx
 import sys
 import json
 import logging
-import uuid # Import uuid for unique client session
+import uuid
+import redis.asyncio as redis # Import Redis client
 
-# Import settings to get the default model
-from backend.app.core.config import settings 
+# Import settings to get the default model and Redis config
+from backend.app.core.config import settings
 
 # Configure basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Configuration - Target the running FastAPI server
+# Configuration
 API_BASE_URL = "http://127.0.0.1:8000"
-CHAT_ENDPOINT = f"{API_BASE_URL}/api/v1/chat/" # Added non-streaming endpoint
+CHAT_ENDPOINT = f"{API_BASE_URL}/api/v1/chat/"
 CHAT_STREAM_ENDPOINT = f"{API_BASE_URL}/api/v1/chat/stream"
+REDIS_HOST = settings.REDIS_HOST # Use host from settings (likely localhost for client)
+REDIS_PORT = settings.REDIS_PORT
+REDIS_DB = settings.REDIS_DB
+SESSION_KEY_PREFIX = "session:" # Should match the prefix in history_crud.py
 
 async def call_chat_endpoint(client: httpx.AsyncClient, payload: dict):
     """Calls the non-streaming chat endpoint to log the request/response.
@@ -39,15 +44,69 @@ async def call_chat_endpoint(client: httpx.AsyncClient, payload: dict):
     except Exception as e:
         logger.exception("An unexpected error occurred calling chat endpoint")
 
+async def list_and_select_session(redis_conn: redis.Redis) -> str:
+    """Lists existing sessions from Redis and prompts user to select or start new."""
+    session_id = None
+    existing_sessions = []
+    try:
+        keys = await redis_conn.keys(f"{SESSION_KEY_PREFIX}*")
+        existing_sessions = sorted([key.decode().replace(SESSION_KEY_PREFIX, "") for key in keys])
+    except Exception as e:
+        logger.warning(f"Could not connect to Redis to list sessions: {e}")
+        print("Warning: Could not retrieve existing sessions from Redis.")
+
+    print("\n--- Session Selection ---")
+    print("[0] Start new session")
+    for i, session in enumerate(existing_sessions):
+        print(f"[{i+1}] {session}")
+    
+    while session_id is None:
+        try:
+            choice = input("Select session index or 0 for new: ")
+            choice_idx = int(choice)
+            if choice_idx == 0:
+                session_id = f"terminal_client_{uuid.uuid4()}"
+                print(f"Starting new session: {session_id}")
+            elif 1 <= choice_idx <= len(existing_sessions):
+                session_id = existing_sessions[choice_idx - 1]
+                print(f"Resuming session: {session_id}")
+            else:
+                print("Invalid choice, please try again.")
+        except ValueError:
+            print("Invalid input. Please enter a number.")
+        except Exception as e:
+            logger.error(f"Error during session selection: {e}")
+            print("An error occurred. Starting a new session.")
+            session_id = f"terminal_client_{uuid.uuid4()}"
+
+    print("-------------------------")
+    return session_id
+
 async def main():
     """Runs the interactive terminal chat loop acting as an API client."""
     print("Starting API client terminal chat...")
-    print(f"Connecting to: {API_BASE_URL}")
-    print("Type 'quit' or 'exit' to end the session.")
+    print(f"Connecting to API server: {API_BASE_URL}")
 
-    # Generate a unique session ID for this client instance
-    session_id = f"terminal_client_{uuid.uuid4()}"
-    print(f"Session ID: {session_id}")
+    redis_conn = None
+    try:
+        # Connect to Redis
+        redis_conn = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB)
+        await redis_conn.ping() # Test connection
+        print(f"Connected to Redis at {REDIS_HOST}:{REDIS_PORT}")
+        # Select or start session
+        session_id = await list_and_select_session(redis_conn)
+    except Exception as e:
+        logger.error(f"Failed to connect to Redis or select session: {e}")
+        print("\nError connecting to Redis. Starting without session history features.")
+        session_id = f"terminal_client_{uuid.uuid4()}"
+        print(f"Starting new session: {session_id}")
+        print("-------------------------")
+        if redis_conn:
+            await redis_conn.close() # Close if connection was partial
+            redis_conn = None
+
+    print("Type 'quit' or 'exit' to end the session.")
+    # print(f"Using Session ID: {session_id}") # No longer needed, printed during selection
 
     # Use httpx.AsyncClient for making requests
     async with httpx.AsyncClient(timeout=60.0) as client:
@@ -108,6 +167,11 @@ async def main():
             except EOFError: # Handle Ctrl+D
                 print("\nExiting chat.")
                 break
+
+    # Close Redis connection if open
+    if redis_conn:
+        await redis_conn.close()
+        logger.info("Closed Redis connection.")
 
 if __name__ == "__main__":
     print("---------------------------------------------------------")

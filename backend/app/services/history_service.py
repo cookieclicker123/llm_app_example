@@ -5,7 +5,7 @@ from fastapi import Depends # Import Depends
 
 from backend.app.models.history import HistoryEntry
 from backend.app.crud import history_crud # Import the CRUD functions
-from backend.app.main import get_redis # Import the Redis dependency provider
+from backend.app.core.dependencies import get_redis # Import from new location
 
 # In-memory storage (REMOVED)
 # conversation_history: Dict[str, List[HistoryEntry]] = defaultdict(list)
@@ -16,7 +16,7 @@ async def save_history_entry(
     session_id: str,
     user_message: str,
     llm_response: str,
-    redis_conn: redis.Redis = Depends(get_redis) # Inject Redis connection
+    redis_conn: redis.Redis # Accept Redis connection as argument
 ) -> HistoryEntry:
     """Constructs a HistoryEntry and saves it to Redis via CRUD layer."""
     entry = HistoryEntry(
@@ -35,7 +35,7 @@ async def save_history_entry(
 
 async def get_history(
     session_id: str,
-    redis_conn: redis.Redis = Depends(get_redis) # Inject Redis connection
+    redis_conn: redis.Redis # Accept Redis connection as argument
 ) -> List[HistoryEntry]:
     """Retrieves the conversation history for a given session from Redis via CRUD layer."""
     try:
@@ -49,7 +49,7 @@ async def get_history(
 
 async def clear_history(
     session_id: str,
-    redis_conn: redis.Redis = Depends(get_redis) # Inject Redis connection
+    redis_conn: redis.Redis # Accept Redis connection as argument
 ):
     """Clears the history for a specific session in Redis via CRUD layer."""
     # Note: Clearing *all* history is deliberately omitted here for safety.

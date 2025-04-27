@@ -1,6 +1,7 @@
 import logging
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
+import redis.asyncio as redis # Import redis
 
 from backend.app.models.chat import LLMRequest, LLMResponse
 from backend.app.services.chat_service import handle_chat_request, handle_chat_stream
@@ -8,6 +9,8 @@ from backend.app.utils.ollama_client import create_ollama_generate_func, create_
 from backend.app.core.types import LLMFunction, LLMStreamingFunction
 # Import settings dependency
 from backend.app.core.config import Settings, get_settings
+# Import redis dependency provider
+from backend.app.core.dependencies import get_redis
 
 logger = logging.getLogger(__name__)
 
@@ -44,16 +47,23 @@ async def chat_endpoint(
     # Inject the LLM function dependency
     ollama_generate_func: LLMFunction = Depends(get_ollama_generate),
     # Inject the settings dependency
-    app_settings: Settings = Depends(get_settings)
+    app_settings: Settings = Depends(get_settings),
+    # Inject the Redis connection dependency
+    redis_conn: redis.Redis = Depends(get_redis)
 ):
     """
     Endpoint for non-streaming chat requests.
-    Injects dependencies (LLM function, settings) and calls the service layer.
+    Injects dependencies (LLM function, settings, Redis) and calls the service layer.
     """
     try:
         logger.info(f"Received non-streaming chat request: {request.prompt[:50]}...")
         # Service function now receives the injected dependencies
-        response = await handle_chat_request(request, ollama_generate_func, app_settings)
+        response = await handle_chat_request(
+            request,
+            ollama_generate_func,
+            app_settings,
+            redis_conn=redis_conn # Pass redis connection
+        )
         logger.info("Successfully processed non-streaming chat request.")
         return response
     except Exception as e:
@@ -65,17 +75,23 @@ async def chat_endpoint(
 async def chat_stream_endpoint(
     request: LLMRequest,
     # Inject the dependency using Depends
-    ollama_stream_func: LLMStreamingFunction = Depends(get_ollama_stream)
+    ollama_stream_func: LLMStreamingFunction = Depends(get_ollama_stream),
+    # Inject the Redis connection dependency
+    redis_conn: redis.Redis = Depends(get_redis)
 ):
     """
     Endpoint for streaming chat requests.
     Receives a prompt and streams back the LLM response chunk by chunk.
-    Dependencies (like the LLM function) are injected.
+    Dependencies (LLM function, Redis) are injected.
     """
     try:
         logger.info(f"Received streaming chat request: {request.prompt[:50]}...")
         # Service function now receives the injected dependency
-        stream_generator = handle_chat_stream(request, ollama_stream_func)
+        stream_generator = handle_chat_stream(
+            request,
+            ollama_stream_func,
+            redis_conn=redis_conn # Pass redis connection
+        )
         
         # Return the async generator wrapped in a StreamingResponse
         return StreamingResponse(stream_generator, media_type="text/plain")

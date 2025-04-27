@@ -17,14 +17,14 @@ This project is a hands-on exercise in building a complete, production-ready app
 *   **Backend:** Python, FastAPI, asyncio
 *   **LLM Serving:** Ollama (for local development/testing)
 *   **Frontend:** React, TypeScript (potentially)
-*   **Database:** PostgreSQL
-*   **Caching:** Redis
-*   **Task Queuing:** FastAPI Background Tasks / Celery (with Redis or RabbitMQ as broker)
+*   **Database:** PostgreSQL (Future)
+*   **Caching & History:** Redis (Currently used for persistent chat history)
+*   **Task Queuing:** FastAPI Background Tasks / Celery (Future)
 *   **Testing:** Pytest
 *   **Containerization:** Docker, Docker Compose
-*   **Monitoring:** Prometheus, Grafana
-*   **CI/CD:** GitHub Actions
-*   **Cloud Platform:** Google Cloud Platform (GCP) - Artifact Registry, Cloud Run/GKE
+*   **Monitoring:** Prometheus, Grafana (Future)
+*   **CI/CD:** GitHub Actions (Future)
+*   **Cloud Platform:** Google Cloud Platform (GCP) - Artifact Registry, Cloud Run/GKE (Future)
 
 ## Proposed Project Structure 📁
 
@@ -33,141 +33,210 @@ This project is a hands-on exercise in building a complete, production-ready app
 ├── backend/
 │   ├── app/
 │   │   ├── __init__.py
-│   │   ├── main.py         # FastAPI app setup
+│   │   ├── main.py         # FastAPI app setup, lifespan events
 │   │   ├── api/            # API Endpoints (routers)
-│   │   ├── core/           # Config, core settings
-│   │   ├── crud/           # Database interaction logic
+│   │   ├── core/           # Config, core settings, dependencies
+│   │   ├── crud/           # Database/Redis interaction logic
 │   │   ├── models/         # Pydantic models (request/response)
 │   │   ├── schemas/        # Database schemas (e.g., SQLAlchemy models)
-│   │   ├── services/       # Business logic, LLM interaction
-│   │   └── utils/          # Helper functions
+│   │   ├── services/       # Business logic, LLM interaction, history management
+│   │   └── utils/          # Helper functions, external clients (e.g., Ollama)
 │   ├── tests/              # Pytest tests for the backend
-│   ├── terminal_chat.py  # Direct service test (manual)
-│   ├── app.py            # API client test (manual)
-│   └── Dockerfile          # Note: Will need update for pyproject.toml build
+│   ├── app.py            # Terminal API client (with session handling)
+│   └── Dockerfile
 ├── pyproject.toml          # Project definition and dependencies
-├── frontend/
-│   ├── public/
-│   ├── src/                # React components, styles, logic
-│   ├── Dockerfile          # Frontend Docker image build instructions
-│   └── package.json        # Frontend dependencies
-├── infra/
-│   └── monitoring/         # Prometheus & Grafana configs
-├── .github/
-│   └── workflows/          # GitHub Actions CI/CD pipelines
+├── frontend/               # (Placeholder for future frontend)
+│   └── ...
+├── infra/                  # (Placeholder for future monitoring/infra configs)
+│   └── ...
+├── .github/                # (Placeholder for future CI/CD workflows)
+│   └── ...
 ├── docker-compose.yml      # Docker Compose configuration for all services
+├── pytest.ini              # Pytest configuration (e.g., warning filters)
 ├── README.md               # You are here!
 └── .gitignore
 ```
-*(This structure is starting to evolve!)*
 
 ## Getting Started 🚀
 
-1.  **Clone the repository:**
+1.  **Prerequisites:**
+    *   Docker & Docker Compose
+    *   Python 3.11+
+    *   Ollama installed and running locally (see [Ollama website](https://ollama.com/))
+    *   Pull an Ollama model (e.g., `ollama pull gemma3:12b-it-qat`) - the default model is set in `backend/app/core/config.py`.
+
+2.  **Clone the repository:**
     ```bash
-    git clone https://github.com/yourusername/end-to-end-llm-app.git
+    git clone <your-repo-url>
     cd end-to-end-llm-app
     ```
-2.  **Create and activate a virtual environment:**
+3.  **(Optional) Create and activate a virtual environment:**
+    While dependencies are installed in the Docker image, you might want a local venv for IDE integration or direct script running.
     ```bash
-    # Ensure you have Python 3.11+
     python3.11 -m venv .venv
     source .venv/bin/activate
+    pip install -e '.[test]' # Installs backend + test deps locally
     ```
-3.  **Install the backend package and test dependencies:**
+4.  **Build and start services:**
+    This will build the backend image and start both the backend and Redis containers.
     ```bash
-    # Install in editable mode (-e) with optional [test] dependencies
-    pip install -e '.[test]'
+    docker compose up --build -d
     ```
-4.  **Create temporary directory (if needed by tests):**
+    *   `-d` runs containers in detached mode.
+    *   `--build` forces a rebuild of images if their source (Dockerfile, code) has changed.
+
+5.  **Check container status:**
     ```bash
-    mkdir -p tmp/
+    docker ps
     ```
+    You should see `end_to_end_llm_app-backend-1` and `end_to_end_llm_app-redis-1` running.
 
-## Running the API Client Terminal Chat (Manual Testing) 💬
+6.  **Check API:** Open [http://localhost:8000/docs](http://localhost:8000/docs) in your browser to see the FastAPI documentation.
 
-An alternative interactive terminal script (`backend/app.py`) acts as an HTTP client to test the running FastAPI application endpoints.
+## Using the Application
 
-1.  **Ensure the FastAPI server is running:**
+### Interactive Terminal Client
+
+The easiest way to interact with the API and test session persistence.
+
+1.  **Ensure services are running** (`docker compose up -d`).
+2.  **Run the client:**
     ```bash
-    # In terminal 1:
-    source .venv/bin/activate
-    uvicorn backend.app.main:app --reload
-    ```
-    Once running, you can access the interactive API documentation (Swagger UI) in your browser at [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs).
-
-2.  **Ensure Ollama is running** and accessible by the FastAPI server.
-3.  **Run the client script in a separate terminal:**
-    ```bash
-    # In terminal 2:
-    source .venv/bin/activate
     python backend/app.py
     ```
-4.  Type your prompts and press Enter. Type `quit` or `exit` to end.
+3.  **Session Handling:** The client will connect to Redis and prompt you:
+    *   It lists existing session IDs found in Redis.
+    *   Enter `0` to start a new session with a random ID.
+    *   Enter the index number corresponding to an existing session ID to resume it.
+4.  Chat with the LLM. Type `quit` or `exit` to end.
 
-## Running the Direct Terminal Chat (Manual Testing) 🧑‍💻
+### Using `curl`
 
-A simple interactive terminal chat script (`backend/terminal_chat.py`) is provided for manually testing the connection and streaming with a running Ollama instance.
+You can also interact directly with the API endpoints using `curl`.
 
-1.  **Ensure Ollama is running** and accessible (e.g., `ollama serve` or via Docker).
-2.  **Ensure the required model is pulled** (e.g., `ollama pull deepseek-r1:14b`).
-3.  **Activate the virtual environment:**
+*   **Required Headers:** `-H "Content-Type: application/json"`
+*   **Required Body Fields:** `prompt` (string), `session_id` (string), `model_name` (string)
+
+**Example: Non-Streaming Chat (`/api/v1/chat/`)**
+
+```bash
+SESSION_ID="my_curl_session_1"
+MODEL_NAME="gemma3:12b-it-qat" # Or your preferred model
+
+# First request
+curl -X POST http://localhost:8000/api/v1/chat/ \
+  -H "Content-Type: application/json" \
+  -d "{\
+        \"prompt\": \"What is the capital of France?",\
+        \"session_id\": \"$SESSION_ID\",\
+        \"model_name\": \"$MODEL_NAME\"\
+      }"
+
+# Second request (same session)
+curl -X POST http://localhost:8000/api/v1/chat/ \
+  -H "Content-Type: application/json" \
+  -d "{\
+        \"prompt\": \"How many people live there?",\
+        \"session_id\": \"$SESSION_ID\",\
+        \"model_name\": \"$MODEL_NAME\"\
+      }"
+```
+*Note: The non-streaming endpoint returns the full `LLMResponse` object as JSON.* 
+
+**Example: Streaming Chat (`/api/v1/chat/stream`)**
+
+```bash
+SESSION_ID="my_curl_session_2"
+MODEL_NAME="gemma3:12b-it-qat"
+
+curl -X POST http://localhost:8000/api/v1/chat/stream \
+  -H "Content-Type: application/json" \
+  -d "{\
+        \"prompt\": \"Tell me about Redis.",\
+        \"session_id\": \"$SESSION_ID\",\
+        \"model_name\": \"$MODEL_NAME\"\
+      }" \
+  --no-buffer
+```
+*Note: `--no-buffer` is recommended with `curl` for streaming to see chunks as they arrive. The streaming endpoint returns plain text chunks.* 
+
+## Development Workflow
+
+### Redis Persistence
+
+*   Chat history is now stored in the `redis` service container using Redis Lists.
+*   Each session ID maps to a key in Redis (prefixed with `session:`).
+*   Each key holds a list where each element is a JSON string representing a `HistoryEntry` (user message + LLM response).
+*   Data persists as long as the Redis volume (`redis_data`) exists. Stopping and starting containers with `docker compose up`/`down`/`stop`/`start` will preserve history.
+*   **Stopping only the backend:** If you want to restart the backend *without* losing the current session history (useful during development), use:
     ```bash
-    source .venv/bin/activate
+    docker compose stop backend
+    # Make code changes
+    docker compose build backend # Rebuild if needed
+    docker compose up -d backend # Restart backend, Redis was untouched
     ```
-4.  **Run the script from the project root *as a module*:**
+
+### Forcing Rebuild without Cache (`--no-cache`)
+
+Sometimes Docker's build cache can cause issues if it reuses old layers when you need fresh code or dependencies.
+
+*   **Normal build:** `docker compose build backend` (Uses cache, faster for minor code changes).
+*   **Build without cache:** `docker compose build --no-cache backend`
+    *   **Use cases:**
+        *   After significant code changes, especially if you suspect caching issues.
+        *   After changing dependencies in `pyproject.toml` if the `pip install` layer wasn't invalidated.
+        *   After changing base images or earlier steps in the `Dockerfile`.
+        *   When troubleshooting unexpected behavior that might stem from stale code in the image.
+
+### Inspecting Redis Data
+
+You can directly view the history stored in Redis:
+
+1.  **Connect to Redis:**
     ```bash
-    python -m backend.terminal_chat
+    docker compose exec redis redis-cli
     ```
-5.  Type your prompts and press Enter. Type `quit` or `exit` to end.
+2.  **Useful Commands inside `redis-cli`:**
+    *   `PING`: Should return `PONG`.
+    *   `KEYS "session:*"`: List all keys used for session history.
+    *   `TYPE session:<session_id>`: Should return `list`.
+    *   `LLEN session:<session_id>`: Show how many turns are in the history list.
+    *   `LRANGE session:<session_id> 0 -1`: Show all history entries (JSON strings) for the session (newest at the top/index 0).
+    *   `LINDEX session:<session_id> 0`: Show the most recent history entry (JSON string).
+    *   `DEL session:<session_id>`: Delete the history for a specific session.
+    *   `FLUSHDB`: **DANGER!** Deletes *all* keys in the current database (DB 0 by default).
+    *   `exit`: Quit `redis-cli`.
 
 ## Running Tests ✅
 
 This project uses `pytest` for testing. Ensure you have installed the project with test dependencies (`pip install -e '.[test]'`).
 
-Run tests from the project root directory. **It is recommended to run `pytest` using the virtual environment's Python interpreter** to avoid path issues:
+Tests can be run locally (if venv is set up) or inside the Docker container.
+
+**Running Tests Inside Docker (Recommended):**
+
+This ensures tests run in the same environment as the application.
+
+1.  Make sure containers are running: `docker compose up -d`
+2.  Execute pytest within the backend container:
+    ```bash
+    docker compose exec backend python -m pytest
+    ```
+    *   Add flags like `-v` (verbose) or `-k test_my_function` as needed.
+    *   The `pytest.ini` file filters out common noisy warnings.
+
+**Running Tests Locally:**
+
+Requires installing dependencies locally (`pip install -e '.[test]'`).
 ```bash
-# Activate venv first if not already active
+# Activate venv first
 source .venv/bin/activate
 
-# Recommended way to run pytest:
-.venv/bin/python -m pytest
+# Run pytest
+python -m pytest
 ```
 
-*   **Service Tests (`backend/tests/services/`):** Tests for the business logic layer.
-    ```bash
-    .venv/bin/python -m pytest backend/tests/services/
-    ```
-
-*   **API Tests (`backend/tests/api/`):** These tests use FastAPI's dependency overriding feature. They replace the actual Ollama client functions with mock versions defined in `backend/tests/mocks/mock_llm.py` which use predefined question/answer pairs from `backend/tests/fixtures/mock_qa_pairs.json`. This isolates the API layer for testing.
-    ```bash
-    .venv/bin/python -m pytest backend/tests/api/
-    # Or a specific file:
-    # .venv/bin/python -m pytest backend/tests/api/test_chat_api.py
-    ```
-
-*   **Mock/Utility Tests (`backend/tests/mocks/`, `backend/tests/utils/`):** Tests for helper functions and mocking utilities.
-    ```bash
-    .venv/bin/python -m pytest backend/tests/mocks/
-    ```
-
-*   **Run tests in a specific file (e.g., mock tests):**
-    ```bash
-    .venv/bin/python -m pytest backend/tests/mocks/test_mock_llm.py
-    ```
-
-*   **Run a specific test function by name:**
-    Use the `-k` flag followed by a string expression that matches part of the test function name.
-    ```bash
-    # Example: Run only the test_mock_generate_response_found test
-    .venv/bin/python -m pytest backend/tests/mocks/test_mock_llm.py -k test_mock_generate_response_found
-    ```
-
-*   **See output (`print` statements) and more details:**
-    Use the `-s` (capture disabled) and `-v` (verbose) flags.
-    ```bash
-    .venv/bin/python -m pytest -s -v
-    ```
+*(See previous README section for more detailed pytest commands if needed)*
 
 Let's build something awesome and learn a ton along the way!
 

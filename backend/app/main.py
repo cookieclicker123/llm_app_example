@@ -45,7 +45,7 @@ async def lifespan(app: FastAPI):
         "model": settings.OLLAMA_DEFAULT_MODEL,
         "prompt": "Warmup prompt (content doesn't matter much)", # Simple prompt
         "stream": False,
-        "keep_alive": "5m" # Keep it warm for 5 mins after warmup
+        "keep_alive": "10m" # Keep it warm for 10 mins after warmup
     }
     try:
         async with httpx.AsyncClient(timeout=settings.OLLAMA_REQUEST_TIMEOUT * 2) as client: # Longer timeout for warmup
@@ -73,15 +73,6 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan # Add the lifespan manager
 )
-
-# --- Dependency Provider for Redis --- #
-async def get_redis(request: Request) -> redis.Redis:
-    """Dependency to get a Redis connection from the pool stored in app.state."""
-    if not hasattr(request.app.state, 'redis_pool') or not request.app.state.redis_pool:
-        raise HTTPException(status_code=503, detail="Redis connection pool not available.")
-    # Return a Redis client instance using the pool
-    return redis.Redis(connection_pool=request.app.state.redis_pool)
-# -------------------------------------- #
 
 @app.get("/")
 async def read_root():
