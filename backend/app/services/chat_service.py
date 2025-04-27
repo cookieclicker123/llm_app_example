@@ -53,7 +53,8 @@ async def handle_chat_request(
 
     # --- Call the LLM function --- #
     # Pass history to the LLM function (assuming it accepts a 'history' argument)
-    raw_llm_output = await llm_generate_func(request, history=retrieved_history)
+    # Pass a copy to prevent mutation issues if the underlying history store is modified during the call
+    raw_llm_output = await llm_generate_func(request, history=retrieved_history.copy())
 
     # --- Record timing --- #
     end_time = time.perf_counter()
@@ -176,7 +177,8 @@ async def handle_chat_stream(
 
     # Call the injected streaming LLM function and yield chunks
     # Pass history to the LLM stream function (assuming it accepts a 'history' argument)
-    async for chunk in llm_stream_func(request, history=retrieved_history):
+    # Pass a copy to prevent mutation issues if the underlying history store is modified during the call
+    async for chunk in llm_stream_func(request, history=retrieved_history.copy()):
         yield chunk
 
     # Future enhancements (logging completion, saving full response?)

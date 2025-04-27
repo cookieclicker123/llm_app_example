@@ -14,6 +14,8 @@ services:
     # Useful for overriding defaults or setting secrets without hardcoding
     env_file:
       - .env
+    environment:
+      - REDIS_HOST=redis # Override default host to use service name
     # Mount volumes to persist data and potentially enable code updates
     volumes:
       # Map the local tmp directory to the container's tmp directory
@@ -25,11 +27,12 @@ services:
       # Optional: Uncomment below to mount the *entire* backend code 
       # for live updates without rebuilding (if using --reload with uvicorn).
       # Be cautious, this bypasses the code baked into the image during build.
-      - ./backend:/app/backend
-    # depends_on will be added later when DB, Redis, etc. are defined
-    # depends_on:
-    #   - db
-    #   - redis
+      # - ./backend:/app/backend
+    # Ensure backend starts after redis is healthy
+    depends_on:
+      redis:
+        condition: service_healthy
+    #   - db # If using a DB
     #   - ollama # If running Ollama in compose
 
   # Database service (PostgreSQL) - Uncomment and configure later
@@ -44,9 +47,19 @@ services:
   #   env_file:
   #     - .env # Could also load DB secrets from here
 
-  # Cache service (Redis) - Uncomment and configure later
-  # redis:
-  #   image: redis:7
+  # Cache service (Redis)
+  redis:
+    image: redis:7-alpine
+    command: redis-server --save "" --appendonly yes # Disable RDB, enable AOF
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379" # Expose Redis port to host (optional, for direct inspection)
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # Ollama service - Uncomment and configure later if running via Compose
   # ollama:
@@ -81,6 +94,7 @@ services:
 
 volumes:
   postgres_data:
+  redis_data: # Added named volume for Redis data
   ollama_data:
   grafana_data:
 

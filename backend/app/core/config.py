@@ -18,11 +18,16 @@ class Settings(BaseSettings):
 
     # Ollama specific settings
     OLLAMA_BASE_URL: str = "http://localhost:11434" # Default for local Ollama
-    OLLAMA_DEFAULT_MODEL: str = "deepseek-r1:14b" # Example default model
+    OLLAMA_DEFAULT_MODEL: str = "gemma3:12b-it-qat" # Example default model
     OLLAMA_REQUEST_TIMEOUT: int = 60 # Timeout in seconds
 
     # Directory for saving chat responses (relative to project root assumed by default usage)
     CHAT_RESPONSE_SAVE_DIR: Path = Path("backend/tmp/json_sessions")
+
+    # Redis settings
+    REDIS_HOST: str = "localhost"
+    REDIS_PORT: int = 6379
+    REDIS_DB: int = 0 # Default Redis DB
 
     # Add other settings like Database URL, Redis URL, etc., later
     # DATABASE_URL: str = "postgresql://user:password@host:port/db"

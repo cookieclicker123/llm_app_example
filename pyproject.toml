@@ -19,7 +19,8 @@ dependencies = [
     "pydantic", # Already a fastapi dependency, but good to be explicit
     "pydantic-settings", # Use pydantic-settings for config
     "python-dotenv", # For config later
-    # Add sqlalchemy, psycopg2-binary, redis etc. later when needed
+    "redis[hiredis]>=5.0.0", # Added Redis client
+    # Add sqlalchemy, psycopg2-binary etc. later when needed
 ]
 
 [project.optional-dependencies]
@@ -27,6 +28,7 @@ dependencies = [
 test = [
     "pytest",
     "pytest-asyncio",
+    "fakeredis[lua]>=2.0.0", # Added fakeredis for testing
     # httpx is already a core dependency
 ]
 

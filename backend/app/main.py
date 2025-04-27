@@ -1,8 +1,9 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, HTTPException
 import logging # Import logging
 import sys # Import sys to output to stdout
 from contextlib import asynccontextmanager
 import httpx
+import redis.asyncio as redis # Import async redis client
 from backend.app.core.config import settings # Assuming settings are needed
 
 # Import the router
@@ -24,6 +25,21 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Code to run on startup
+    logger.info("Application startup: Connecting to Redis...")
+    try:
+        app.state.redis_pool = redis.ConnectionPool.from_url(
+            f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}/{settings.REDIS_DB}",
+            decode_responses=True # Decode responses to UTF-8
+        )
+        # Test connection
+        async with redis.Redis(connection_pool=app.state.redis_pool) as conn:
+            await conn.ping()
+        logger.info("Successfully connected to Redis.")
+    except Exception as e:
+        logger.error(f"Failed to connect to Redis: {e}")
+        # Optionally, raise the exception or handle startup failure
+        app.state.redis_pool = None # Ensure pool is None if connection failed
+
     logger.info("Application startup: Warming up default Ollama model...")
     warmup_payload = {
         "model": settings.OLLAMA_DEFAULT_MODEL,
@@ -43,6 +59,12 @@ async def lifespan(app: FastAPI):
 
     yield
     # Code to run on shutdown (if any)
+    if hasattr(app.state, 'redis_pool') and app.state.redis_pool:
+        logger.info("Application shutdown: Closing Redis connection pool...")
+        # redis-py >= 5.0 uses close() and await_closed() instead of disconnect()
+        await app.state.redis_pool.disconnect() # Close connections gracefully
+        logger.info("Redis connection pool closed.")
+
     logger.info("Application shutdown.")
 
 app = FastAPI(
@@ -51,6 +73,15 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan # Add the lifespan manager
 )
+
+# --- Dependency Provider for Redis --- #
+async def get_redis(request: Request) -> redis.Redis:
+    """Dependency to get a Redis connection from the pool stored in app.state."""
+    if not hasattr(request.app.state, 'redis_pool') or not request.app.state.redis_pool:
+        raise HTTPException(status_code=503, detail="Redis connection pool not available.")
+    # Return a Redis client instance using the pool
+    return redis.Redis(connection_pool=request.app.state.redis_pool)
+# -------------------------------------- #
 
 @app.get("/")
 async def read_root():

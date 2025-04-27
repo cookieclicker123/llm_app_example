@@ -82,7 +82,7 @@ Once the `backend` container is running:
           -d '{
                 "prompt": "Hello",
                 "session_id": "curl_test_1",
-                "model_name": "deepseek-r1:14b"
+                "model_name": "gemma3:12b-it-qat"
               }'
         ```
 
@@ -93,7 +93,7 @@ Once the `backend` container is running:
           -d '{
                 "prompt": "Tell me a joke",
                 "session_id": "curl_test_2",
-                "model_name": "deepseek-r1:14b"
+                "model_name": "gemma3:12b-it-qat"
               }' --no-buffer
         # --no-buffer is helpful to see stream output immediately
         ```

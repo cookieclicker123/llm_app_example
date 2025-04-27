@@ -85,10 +85,17 @@ def create_mock_llm_stream_func(
     _lowercase_qa = _load_qa_data(qa_file_path)
     _char_delay = 1.0 / max(1, emulation_speed_cps)
 
-    async def stream_response(request: LLMRequest) -> AsyncGenerator[StreamingChunk, None]:
+    async def stream_response(request: LLMRequest, history: List[HistoryEntry] = None) -> AsyncGenerator[StreamingChunk, None]:
         """
         The actual mock LLM function that streams a response.
+        Now accepts an optional history argument (but doesn't use it).
         """
+        if history:
+            # TODO: Implement mock logic that uses history for streaming if needed
+            print(f"[Mock LLM Stream] Received {len(history)} history entries for session {request.session_id}.")
+        else:
+            print(f"[Mock LLM Stream] No history received for session {request.session_id}.")
+
         prompt_lower = request.prompt.lower()
         response_text = _lowercase_qa.get(prompt_lower, DEFAULT_NOT_FOUND_RESPONSE)
 
