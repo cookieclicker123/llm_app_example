@@ -1,10 +1,11 @@
 import asyncio
 import json
 from pathlib import Path
-from typing import AsyncGenerator, Dict, Any
+from typing import AsyncGenerator, Dict, Any, List
 
 from backend.app.models.chat import LLMRequest, LLMResponse, StreamingChunk
 from backend.app.core.types import LLMFunction, LLMStreamingFunction
+from backend.app.models.history import HistoryEntry
 
 DEFAULT_EMULATION_SPEED_CPS = 50 # Characters per second
 DEFAULT_NOT_FOUND_RESPONSE = "Sorry, I don't have a mock answer for that prompt."
@@ -40,10 +41,17 @@ def create_mock_llm_generate_func(
     _lowercase_qa = _load_qa_data(qa_file_path)
     _base_delay = 0.5 / max(1, emulation_speed_cps) # Small delay based on speed
 
-    async def generate_response(request: LLMRequest) -> Dict[str, Any]:
+    async def generate_response(request: LLMRequest, history: List[HistoryEntry] = None) -> Dict[str, Any]:
         """
         The actual mock LLM function that generates a response dictionary.
+        Now accepts an optional history argument.
         """
+        if history:
+            # TODO: Implement mock logic that uses the history if needed for tests
+            print(f"[Mock LLM] Received {len(history)} history entries for session {request.session_id}.")
+        else:
+            print(f"[Mock LLM] No history received for session {request.session_id}.")
+
         prompt_lower = request.prompt.lower()
         response_text = _lowercase_qa.get(prompt_lower, DEFAULT_NOT_FOUND_RESPONSE)
 

@@ -9,6 +9,7 @@ from fastapi import Depends # Import Depends
 from backend.app.models.chat import LLMRequest, LLMResponse, StreamingChunk
 from backend.app.core.types import LLMFunction, LLMStreamingFunction
 from backend.app.core.config import get_settings, Settings
+from backend.app.services.history_service import save_history_entry, get_history
 
 logger = logging.getLogger(__name__)
 
@@ -38,13 +39,21 @@ async def handle_chat_request(
     created_at = datetime.now(UTC)
     start_time = time.perf_counter()
 
+    # 1. Retrieve conversation history using request.session_id
+    try:
+        retrieved_history = get_history(request.session_id)
+        logger.info(f"Retrieved {len(retrieved_history)} history entries for session {request.session_id}.")
+    except Exception as e:
+        logger.exception(f"Failed to retrieve history for session {request.session_id}.")
+        retrieved_history = [] # Default to empty list on error
+
     # Future enhancements:
-    # 1. Retrieve conversation history using request.session_id (from crud)
-    # 2. Format prompt with history and system prompt
+    # 2. Format prompt with history and system prompt (LLM client responsibility?)
     # 3. Add pre/post processing logic
 
     # --- Call the LLM function --- #
-    raw_llm_output = await llm_generate_func(request)
+    # Pass history to the LLM function (assuming it accepts a 'history' argument)
+    raw_llm_output = await llm_generate_func(request, history=retrieved_history)
 
     # --- Record timing --- #
     end_time = time.perf_counter()
@@ -92,6 +101,17 @@ async def handle_chat_request(
         finish_reason=finish_reason
     )
 
+    # --- Save request/response pair to history --- #
+    try:
+        save_history_entry(
+            session_id=request.session_id,
+            user_message=request.prompt,
+            llm_response=llm_response.response # Save the actual response text
+        )
+        logger.info(f"Saved interaction to history for session {request.session_id}.")
+    except Exception as e:
+        logger.exception(f"Failed to save interaction to history for session {request.session_id}.")
+
     # --- Save the response to JSON --- #
     save_dir = app_settings.CHAT_RESPONSE_SAVE_DIR
     logger.info(f"Attempting to save response {llm_response.response_id} to JSON.")
@@ -120,8 +140,8 @@ async def handle_chat_request(
         logger.exception(f"CRITICAL: Failed to save chat response {llm_response.response_id} to JSON.")
 
     # Future enhancements:
-    # 1. Save request/response pair (llm_response object) to history (using crud)
-    # 2. Implement JSON saving logic here
+    # 1. Save request/response pair (llm_response object) to history (using crud) -> Handled above now
+    # 2. Implement JSON saving logic here -> This is already done
 
     logger.info(f"Successfully handled chat request {response_id} for session: {request.session_id}")
     return llm_response
@@ -132,6 +152,7 @@ async def handle_chat_stream(
 ) -> AsyncGenerator[StreamingChunk, None]:
     """
     Handles a streaming chat request by calling the provided streaming LLM function.
+    Retrieves history and passes it to the streaming function.
 
     Args:
         request: The user's request data.
@@ -142,10 +163,20 @@ async def handle_chat_stream(
     """
     logger.info(f"Handling chat stream for session: {request.session_id}")
 
+    # 1. Retrieve conversation history using request.session_id
+    try:
+        retrieved_history = get_history(request.session_id)
+        logger.info(f"Retrieved {len(retrieved_history)} history entries for streaming session {request.session_id}.")
+    except Exception as e:
+        logger.exception(f"Failed to retrieve history for streaming session {request.session_id}.")
+        retrieved_history = [] # Default to empty list on error
+
     # Future enhancements (similar to non-streaming)
+    # - Save full response after stream? (Needs aggregated response)
 
     # Call the injected streaming LLM function and yield chunks
-    async for chunk in llm_stream_func(request):
+    # Pass history to the LLM stream function (assuming it accepts a 'history' argument)
+    async for chunk in llm_stream_func(request, history=retrieved_history):
         yield chunk
 
     # Future enhancements (logging completion, saving full response?)

@@ -3,6 +3,7 @@ import pytest_asyncio
 from pathlib import Path
 from uuid import UUID # Import UUID
 from datetime import datetime # Import datetime
+from unittest.mock import patch, call # Added patch and call
 
 from backend.app.models.chat import LLMRequest, LLMResponse, StreamingChunk
 from backend.app.core.types import LLMFunction, LLMStreamingFunction
@@ -13,6 +14,8 @@ from backend.tests.mocks.mock_llm import (
     create_mock_llm_stream_func,
     DEFAULT_NOT_FOUND_RESPONSE
 )
+# Import history service functions for testing
+from backend.app.services.history_service import get_history, clear_history
 
 # Define the path to the fixtures directory relative to this test file
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
@@ -88,6 +91,73 @@ async def test_handle_chat_request_not_found(mock_generate_func: LLMFunction, te
 
     # Add assertion for request model name
     assert response.request.model_name == "test-model-svc-nf"
+
+@pytest.mark.asyncio
+async def test_handle_chat_request_with_history(mock_generate_func: LLMFunction, test_settings: Settings):
+    """Test that handle_chat_request retrieves and passes history correctly on subsequent calls."""
+    session_id = "test_session_hist"
+    model_name = "test-hist-model"
+    prompt1 = "Hello" # Exists in mock_qa_pairs.json
+    response1_expected = "Mock Hi there! This is a predefined answer."
+    prompt2 = "How are you?" # Exists in mock_qa_pairs.json
+    response2_expected = "I'm fine, thank you."
+
+    # Ensure clean state for the session
+    clear_history(session_id)
+
+    try:
+        # --- First Request --- # 
+        request1 = LLMRequest(prompt=prompt1, session_id=session_id, model_name=model_name)
+        print(f"\n--- Making first request for session {session_id} ---")
+        response1 = await handle_chat_request(request1, mock_generate_func, test_settings)
+        assert response1.response == response1_expected
+
+        # Verify history was saved
+        saved_history = get_history(session_id)
+        assert len(saved_history) == 1
+        assert saved_history[0].user_message == prompt1
+        assert saved_history[0].llm_response == response1_expected
+        print(f"--- History after first request for session {session_id} has {len(saved_history)} entries ---")
+
+        # --- Second Request (with history expected) --- #
+        request2 = LLMRequest(prompt=prompt2, session_id=session_id, model_name=model_name)
+        
+        # Patch the *instance* of the mock function to spy on its arguments
+        # We use patch.object on the *specific instance* being used in this test
+        print(f"--- Making second request for session {session_id} (expecting history) ---")
+        with patch.object(mock_generate_func, '__call__', wraps=mock_generate_func.__call__) as mock_call:
+            response2 = await handle_chat_request(request2, mock_generate_func, test_settings)
+        
+        assert response2.response == response2_expected
+
+        # --- Assertions on Mock Call --- # 
+        print("--- Asserting mock call arguments ---")
+        # Check that the patched mock was called at least once (it should be exactly once here)
+        mock_call.assert_called()
+
+        # Get the arguments from the last call (should be the only call in the 'with' block)
+        last_call_args, last_call_kwargs = mock_call.call_args
+        
+        # Check positional arguments (request object)
+        assert len(last_call_args) == 1
+        assert last_call_args[0] == request2 
+        
+        # Check keyword arguments (history)
+        assert 'history' in last_call_kwargs
+        passed_history = last_call_kwargs['history']
+        assert isinstance(passed_history, list)
+        assert len(passed_history) == 1
+        
+        # Check the content of the passed history
+        assert passed_history[0].session_id == session_id
+        assert passed_history[0].user_message == prompt1 # History should contain the first interaction
+        assert passed_history[0].llm_response == response1_expected
+        print("--- Mock call received history as expected ---")
+
+    finally:
+        # Clean up history for the session
+        clear_history(session_id)
+        print(f"--- Cleaned up history for session {session_id} ---")
 
 @pytest.mark.asyncio
 async def test_handle_chat_stream_success(mock_stream_func: LLMStreamingFunction):
