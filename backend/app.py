@@ -4,112 +4,152 @@ import sys
 import json
 import logging
 import uuid
-import redis.asyncio as redis # Import Redis client
+# Remove direct Redis client import
+# import redis.asyncio as redis
 
 # Import settings to get the default model and Redis config
 from backend.app.core.config import settings
+# Import models needed for handling stream
+from backend.app.models.chat import StreamingChunk
 
 # Configure basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Configuration
+# API Configuration
 API_BASE_URL = "http://127.0.0.1:8000"
+TOKEN_ENDPOINT = f"{API_BASE_URL}/api/v1/auth/token"
+SESSIONS_ENDPOINT = f"{API_BASE_URL}/api/v1/sessions/"
 CHAT_ENDPOINT = f"{API_BASE_URL}/api/v1/chat/"
 CHAT_STREAM_ENDPOINT = f"{API_BASE_URL}/api/v1/chat/stream"
-REDIS_HOST = settings.REDIS_HOST # Use host from settings (likely localhost for client)
-REDIS_PORT = settings.REDIS_PORT
-REDIS_DB = settings.REDIS_DB
-SESSION_KEY_PREFIX = "session:" # Should match the prefix in history_crud.py
 
-async def call_chat_endpoint(client: httpx.AsyncClient, payload: dict):
-    """Calls the non-streaming chat endpoint to log the request/response.
-       Handles errors internally and logs them.
-    """
+# Session state (in-memory for the client)
+access_token: str | None = None
+selected_session_id: str | None = None
+
+# REMOVE old background chat call - history is handled by server
+# async def call_chat_endpoint(client: httpx.AsyncClient, payload: dict):
+#     ...
+
+# REMOVE old Redis-based session selection
+# async def list_and_select_session(redis_conn: redis.Redis) -> str:
+#     ...
+
+# --- New API Client Functions --- #
+
+async def login(client: httpx.AsyncClient) -> str | None:
+    """Prompts user for credentials and attempts to get an auth token."""
+    print("\n--- Login Required ---")
+    username = input("Username: ")
+    password = input("Password: ") # Consider using getpass for better security
+    
     try:
-        response = await client.post(CHAT_ENDPOINT, json=payload)
-        if response.status_code != 200:
-            try:
-                error_detail = response.json()
-            except json.JSONDecodeError:
-                error_detail = await response.aread()
-                error_detail = error_detail.decode()
-            logger.error(f"Error calling chat endpoint ({response.status_code}): {error_detail}")
-        else:
-            # Log success, response content is implicitly saved by the server
-            response_data = response.json()
-            logger.info(f"Successfully called chat endpoint for saving. Response ID: {response_data.get('response_id')}")
+        response = await client.post(
+            TOKEN_ENDPOINT, 
+            data={"username": username, "password": password}, 
+            headers={"Content-Type": "application/x-www-form-urlencoded"}
+        )
+        response.raise_for_status() # Raise exception for 4xx/5xx errors
+        token_data = response.json()
+        print("Login successful!")
+        return token_data.get("access_token")
+    except httpx.HTTPStatusError as e:
+        logger.error(f"Login failed: {e.response.status_code} - {e.response.text}")
+        print(f"Login failed: {e.response.json().get('detail', e.response.text)}")
+        return None
     except httpx.RequestError as e:
-        logger.error(f"HTTP Request failed for chat endpoint: {e}")
+        logger.error(f"Could not connect to token endpoint: {e}")
+        print("Error: Could not connect to the authentication server.")
+        return None
     except Exception as e:
-        logger.exception("An unexpected error occurred calling chat endpoint")
+        logger.exception("An unexpected error occurred during login")
+        print(f"An unexpected error occurred: {e}")
+        return None
 
-async def list_and_select_session(redis_conn: redis.Redis) -> str:
-    """Lists existing sessions from Redis and prompts user to select or start new."""
+async def select_session_from_api(client: httpx.AsyncClient, token: str) -> str | None:
+    """Fetches sessions from the API, prompts user to select or start new."""
     session_id = None
+    headers = {"Authorization": f"Bearer {token}"}
     existing_sessions = []
+    
     try:
-        keys = await redis_conn.keys(f"{SESSION_KEY_PREFIX}*")
-        existing_sessions = sorted([key.decode().replace(SESSION_KEY_PREFIX, "") for key in keys])
+        response = await client.get(SESSIONS_ENDPOINT, headers=headers)
+        response.raise_for_status()
+        sessions_data = response.json()
+        # Assuming API returns list of objects with 'session_uuid' and 'last_accessed_at' (or similar for sorting)
+        # Sort by last_accessed_at descending (most recent first)
+        existing_sessions = sorted(
+            sessions_data, 
+            key=lambda s: s.get('last_accessed_at', '1970-01-01T00:00:00Z'), 
+            reverse=True
+        )
+    except httpx.HTTPStatusError as e:
+        logger.error(f"Failed to list sessions: {e.response.status_code} - {e.response.text}")
+        print(f"Error retrieving sessions: {e.response.json().get('detail', e.response.text)}")
+        # Allow continuing to create a new session
+    except httpx.RequestError as e:
+        logger.error(f"Could not connect to sessions endpoint: {e}")
+        print("Error: Could not connect to the session server.")
+        # Allow continuing to create a new session
     except Exception as e:
-        logger.warning(f"Could not connect to Redis to list sessions: {e}")
-        print("Warning: Could not retrieve existing sessions from Redis.")
+        logger.exception("An unexpected error occurred listing sessions")
+        print(f"An unexpected error occurred listing sessions: {e}")
+        # Allow continuing
 
     print("\n--- Session Selection ---")
     print("[0] Start new session")
     for i, session in enumerate(existing_sessions):
-        print(f"[{i+1}] {session}")
+        # Display more info if available, e.g., title or first message
+        print(f"[{i+1}] {session.get('session_uuid')} (Last Access: {session.get('last_accessed_at')})")
     
     while session_id is None:
         try:
             choice = input("Select session index or 0 for new: ")
             choice_idx = int(choice)
             if choice_idx == 0:
-                session_id = f"terminal_client_{uuid.uuid4()}"
+                session_id = str(uuid.uuid4()) # Generate UUID V4
                 print(f"Starting new session: {session_id}")
             elif 1 <= choice_idx <= len(existing_sessions):
-                session_id = existing_sessions[choice_idx - 1]
+                session_id = existing_sessions[choice_idx - 1]['session_uuid'] # Get the UUID
                 print(f"Resuming session: {session_id}")
             else:
                 print("Invalid choice, please try again.")
-        except ValueError:
-            print("Invalid input. Please enter a number.")
+        except (ValueError, IndexError):
+            print("Invalid input. Please enter a valid number from the list.")
         except Exception as e:
             logger.error(f"Error during session selection: {e}")
             print("An error occurred. Starting a new session.")
-            session_id = f"terminal_client_{uuid.uuid4()}"
+            session_id = str(uuid.uuid4())
 
     print("-------------------------")
     return session_id
+
+# --- Main Execution Logic --- #
 
 async def main():
     """Runs the interactive terminal chat loop acting as an API client."""
     print("Starting API client terminal chat...")
     print(f"Connecting to API server: {API_BASE_URL}")
 
-    redis_conn = None
-    try:
-        # Connect to Redis
-        redis_conn = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB)
-        await redis_conn.ping() # Test connection
-        print(f"Connected to Redis at {REDIS_HOST}:{REDIS_PORT}")
-        # Select or start session
-        session_id = await list_and_select_session(redis_conn)
-    except Exception as e:
-        logger.error(f"Failed to connect to Redis or select session: {e}")
-        print("\nError connecting to Redis. Starting without session history features.")
-        session_id = f"terminal_client_{uuid.uuid4()}"
-        print(f"Starting new session: {session_id}")
-        print("-------------------------")
-        if redis_conn:
-            await redis_conn.close() # Close if connection was partial
-            redis_conn = None
+    global access_token, selected_session_id
 
-    print("Type 'quit' or 'exit' to end the session.")
-    # print(f"Using Session ID: {session_id}") # No longer needed, printed during selection
-
-    # Use httpx.AsyncClient for making requests
+    # Use a single client session for all requests
     async with httpx.AsyncClient(timeout=60.0) as client:
+        # --- Login --- #
+        access_token = await login(client)
+        if not access_token:
+            print("Login failed. Exiting.")
+            return
+
+        # --- Session Selection --- #
+        selected_session_id = await select_session_from_api(client, access_token)
+        if not selected_session_id:
+            print("No session selected or created. Exiting.")
+            return
+
+        print("\nType 'quit' or 'exit' to end the session.")
+
+        # Main chat loop
         while True:
             try:
                 user_input = input("\nYou: ")
@@ -122,34 +162,46 @@ async def main():
                 # Prepare request payload matching LLMRequest model
                 payload = {
                     "prompt": user_input,
-                    "session_id": session_id,
+                    "session_id": selected_session_id, # Use the selected UUID
                     "model_name": settings.OLLAMA_DEFAULT_MODEL # Use default model from settings
                 }
-
-                # --- Call non-streaming endpoint in the background --- #
-                # Create a task to run the saving call concurrently
-                # We don't await it here, letting it run independently
-                save_task = asyncio.create_task(
-                    call_chat_endpoint(client, payload),
-                    name=f"save_task_{payload['prompt'][:10]}" # Optional name for debugging
-                )
-                # Add callback to log if the background task fails (optional but good practice)
-                save_task.add_done_callback(
-                    lambda t: logger.error(f"Background save task failed: {t.exception()}") if t.exception() else None
-                )
-                # -------------------------------------------------------- #
 
                 # --- Call streaming endpoint (for display) --- #
                 print("AI: ", end="", flush=True)
                 try:
-                    async with client.stream("POST", CHAT_STREAM_ENDPOINT, json=payload) as response:
+                    # Add headers to the request
+                    headers = {"Authorization": f"Bearer {access_token}"}
+                    async with client.stream("POST", CHAT_STREAM_ENDPOINT, json=payload, headers=headers) as response:
                         if response.status_code != 200:
-                            error_detail = await response.aread()
-                            print(f"\nError from stream server ({response.status_code}): {error_detail.decode()}", file=sys.stderr)
+                            # Handle auth errors more gracefully
+                            if response.status_code == 401:
+                                print("\nAuthentication error (token expired?). Please login again.", file=sys.stderr)
+                                access_token = None # Clear token
+                                # Re-login could be implemented here by looping back or restarting main
+                                print("Restart the client to login again.")
+                                break 
+                            else:
+                                try:
+                                    error_detail = await response.aread()
+                                    print(f"\nError from stream server ({response.status_code}): {error_detail.decode()}", file=sys.stderr)
+                                except Exception:
+                                     print(f"\nError from stream server ({response.status_code}). Cannot read detail.", file=sys.stderr)
                             continue
                         
-                        async for chunk in response.aiter_text():
-                            print(chunk, end="", flush=True)
+                        # Handle JSON streaming chunks
+                        async for line in response.aiter_lines():
+                            if line.strip(): # Check if line is not just whitespace
+                                try:
+                                    chunk_data = json.loads(line)
+                                    chunk = StreamingChunk(**chunk_data)
+                                    if chunk.content:
+                                        print(chunk.content, end="", flush=True)
+                                except json.JSONDecodeError:
+                                    logger.warning(f"Received non-JSON line from stream: {line}")
+                                    # Optionally print the raw line if it's not JSON?
+                                    # print(line, end="", flush=True) 
+                                except Exception as e:
+                                    logger.error(f"Error processing chunk: {e}. Line: {line}")
                         print() # Newline after stream finishes
 
                 except httpx.RequestError as e:
@@ -168,15 +220,11 @@ async def main():
                 print("\nExiting chat.")
                 break
 
-    # Close Redis connection if open
-    if redis_conn:
-        await redis_conn.close()
-        logger.info("Closed Redis connection.")
-
 if __name__ == "__main__":
     print("---------------------------------------------------------")
     print("IMPORTANT: Make sure the FastAPI server is running!")
-    print(" (e.g., `uvicorn backend.app.main:app --reload`)")
+    # Update the example run command to reflect no reload needed for basic testing
+    print(" (e.g., `docker compose up -d`)") 
     print(f" This client will connect to {API_BASE_URL}")
     print("---------------------------------------------------------")
     try:
