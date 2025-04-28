@@ -231,18 +231,21 @@ async def handle_chat_stream(
         )
         logger.info(f"Retrieved {len(retrieved_history)} history entries for streaming session {request.session_id}.")
     except HTTPException as e:
-        # If session not found (404) or forbidden (403), let it propagate
-        if e.status_code == status.HTTP_404_NOT_FOUND or e.status_code == status.HTTP_403_FORBIDDEN:
-             logger.warning(f"History retrieval failed for stream session {request.session_id}: {e.detail}")
+        # If session not found (404), START WITH EMPTY HISTORY
+        if e.status_code == status.HTTP_404_NOT_FOUND:
+            logger.warning(f"Session not found for stream {request.session_id}, starting new history.")
+            retrieved_history = [] # Treat as empty history
+        # If forbidden (403), let it propagate back to the client
+        elif e.status_code == status.HTTP_403_FORBIDDEN:
+             logger.warning(f"History retrieval forbidden for stream session {request.session_id}: {e.detail}")
              raise e 
-        # For other errors, maybe default to empty list? Or raise?
-        logger.exception(f"Unexpected error retrieving history for streaming session {request.session_id}.")
-        raise # Re-raising generic exceptions for now
-        # retrieved_history = [] 
+        # For other HTTP errors, raise them
+        else:
+            logger.exception(f"Unexpected HTTP error retrieving history for streaming session {request.session_id}.")
+            raise # Re-raising other HTTP exceptions
     except Exception as e:
         logger.exception(f"Unexpected error retrieving history for streaming session {request.session_id}.")
         raise # Re-raise other unexpected errors
-        # retrieved_history = [] 
 
     # Call the injected streaming LLM function and yield chunks
     try:
