@@ -27,5 +27,10 @@ class LLMResponse(BaseModel):
     model_name: str = Field(..., description="The name of the model that generated the response.")
     finish_reason: Optional[str] = Field(None, description="Reason why the generation finished (e.g., 'stop', 'length'). Provided by some LLM APIs.")
 
-# Type alias for data chunks yielded during streaming
-StreamingChunk = str 
+# Define StreamingChunk as a Pydantic model
+class StreamingChunk(BaseModel):
+    session_id: Optional[str] = Field(None, description="Session ID for the current chat stream.")
+    response_id: Optional[UUID] = Field(None, description="Unique ID for the overall response this chunk belongs to.") # Can be added later
+    content: Optional[str] = Field(None, description="The actual text content of the chunk.")
+    type: str = Field(default="content", description="Type of chunk (e.g., 'content', 'start', 'end', 'error', 'metadata').")
+    # Add other relevant fields like model_name, finish_reason for the final chunk if needed 

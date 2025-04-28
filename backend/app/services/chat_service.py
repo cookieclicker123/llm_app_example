@@ -1,5 +1,5 @@
 import logging
-from typing import AsyncGenerator
+from typing import AsyncGenerator, List, Dict
 from datetime import datetime, UTC # Import datetime components
 import time # Import time for performance counter
 import uuid # Import uuid
@@ -10,6 +10,7 @@ import redis.asyncio as redis # Import redis
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.models.user import User
 from backend.app.db.session import get_db_session
+from backend.app.models.history import HistoryEntry
 
 from backend.app.models.chat import LLMRequest, LLMResponse, StreamingChunk
 from backend.app.core.types import LLMFunction, LLMStreamingFunction
@@ -17,8 +18,21 @@ from backend.app.core.config import get_settings, Settings
 # Update history service import path if necessary
 from backend.app.services import history_service # Assuming history_service is in services
 from backend.app.core.dependencies import get_redis # Import redis dependency
+from fastapi import HTTPException, status
 
 logger = logging.getLogger(__name__)
+
+# --- Helper Function to Format History --- #
+def format_history_for_llm(history: List[HistoryEntry]) -> List[Dict[str, str]]:
+    """Formats history list from Redis into the list-of-dicts format for Ollama."""
+    formatted = []
+    for entry in history:
+        formatted.append({"role": "user", "content": entry.user_message})
+        # Check if llm_response exists and is not None before appending
+        if entry.llm_response is not None:
+            formatted.append({"role": "assistant", "content": entry.llm_response})
+        # Else: Maybe log a warning? Or just skip the assistant turn if response is missing.
+    return formatted
 
 # Define the directory for saving JSON responses - NOW READ FROM SETTINGS
 # SAVE_DIR = "backend/tmp/json_sessions"
@@ -52,22 +66,31 @@ async def handle_chat_request(
     created_at = datetime.now(UTC)
     start_time = time.perf_counter()
 
-    # 1. Retrieve conversation history using request.session_id (passing db/user)
+    # Retrieve existing history for the session, handle if not found
     try:
         retrieved_history = await history_service.get_history(
-            session_id_str=request.session_id, # Pass session_id as string
-            redis_conn=redis_conn, 
-            db=db, 
+            session_id_str=request.session_id,
+            redis_conn=redis_conn,
+            db=db,
             current_user=current_user
         )
+        history_for_llm = format_history_for_llm(retrieved_history)
         logger.info(f"Retrieved {len(retrieved_history)} history entries for session {request.session_id}.")
+    except HTTPException as e:
+        if e.status_code == 404:
+            logger.info(f"Session {request.session_id} not found, starting new history.")
+            retrieved_history = [] # Start with empty history
+            history_for_llm = []
+        else:
+            # Re-raise other HTTP exceptions (like 403 Forbidden)
+            logger.error(f"Error retrieving history for session {request.session_id}: {e.detail}")
+            raise
     except Exception as e:
-        logger.exception(f"Failed to retrieve history for session {request.session_id}.")
-        # Let exception propagate if it's an auth/not found error from history service
-        # Only default to empty list for Redis errors?
-        # Re-raising might be better to surface auth errors
-        raise
-        # retrieved_history = [] # Default to empty list on error
+        # Handle unexpected errors during history retrieval
+        logger.error(f"Unexpected error retrieving history for session {request.session_id}: {e}", exc_info=True)
+        # Decide how to proceed: maybe raise 500 or proceed with empty history?
+        # For now, let's raise 500 as something unexpected happened
+        raise HTTPException(status_code=500, detail="Error retrieving session history.")
 
     # Future enhancements:
     # 2. Format prompt with history and system prompt (LLM client responsibility?)
@@ -127,7 +150,7 @@ async def handle_chat_request(
     # --- Save request/response pair to history (passing db/user) --- #
     try:
         await history_service.save_history_entry(
-            session_id_str=request.session_id, # Pass session_id as string
+            session_id_str=request.session_id,
             user_message=request.prompt,
             llm_response=llm_response.response, # Save the actual response text
             redis_conn=redis_conn,
@@ -223,15 +246,19 @@ async def handle_chat_stream(
 
     # Call the injected streaming LLM function and yield chunks
     try:
-        async for chunk in llm_stream_func(request, history=retrieved_history.copy()):
-            yield chunk
+        # The ollama client yields string chunks
+        async for text_chunk in llm_stream_func(request, history=retrieved_history.copy()): # Pass formatted history? No, ollama_client formats it.
+            # Wrap the string chunk in our StreamingChunk model
+            chunk_model = StreamingChunk(session_id=request.session_id, content=text_chunk, type="content")
+            # Yield the model dump as a JSON string, followed by newline for SSE format
+            yield chunk_model.model_dump_json() + "\n"
             # Aggregate the response content from chunks
-            if isinstance(chunk, StreamingChunk) and chunk.content:
-                aggregated_response += chunk.content
+            aggregated_response += text_chunk # Aggregate the raw text
     except Exception as e:
          logger.exception(f"Error during LLM stream for session {request.session_id}.")
-         # Decide how to handle stream errors - yield an error chunk?
-         yield StreamingChunk(session_id=request.session_id, content=f"Error during stream: {e}", type="error")
+         # Yield a StreamingChunk object for the error, encoded as JSON
+         error_chunk = StreamingChunk(session_id=request.session_id, content=f"Error during stream: {e}", type="error")
+         yield error_chunk.model_dump_json() + "\n"
          return # Stop the generator
 
     # --- Save full interaction after successful stream --- #

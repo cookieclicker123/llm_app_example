@@ -20,7 +20,10 @@ services:
       # REDIS_PASSWORD: your_redis_password # Uncomment and set if redis requires password
       OPENAI_API_KEY: ${OPENAI_API_KEY} # Make sure this is in your .env or system env
       # Construct the database URL from other env vars
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      # Comment out the substitution version:
+      # DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      # Add the hardcoded version (replace appuser/appdb with actual .env values if different):
+      DATABASE_URL: 'postgresql+asyncpg://appuser:v7i4gJOYHP3aP5In46966%2BjUBiHvjkQq@postgres:5432/appdb' # Use encoded password
     # Mount volumes to persist data and potentially enable code updates
     volumes:
       # Map the local tmp directory to the container's tmp directory
