@@ -14,11 +14,11 @@ This project is a hands-on exercise in building a complete, production-ready app
 
 ## Technology Stack 🛠️
 
-*   **Backend:** Python, FastAPI, asyncio
+*   **Backend:** Python, FastAPI, asyncio, SQLAlchemy, Alembic, Passlib, python-jose
 *   **LLM Serving:** Ollama (for local development/testing)
 *   **Frontend:** React, TypeScript (potentially)
-*   **Database:** PostgreSQL (Future)
-*   **Caching & History:** Redis (Currently used for persistent chat history)
+*   **Database:** PostgreSQL (User accounts, Session Metadata)
+*   **Caching & History:** Redis (Chat history content)
 *   **Task Queuing:** FastAPI Background Tasks / Celery (Future)
 *   **Testing:** Pytest
 *   **Containerization:** Docker, Docker Compose
@@ -34,15 +34,18 @@ This project is a hands-on exercise in building a complete, production-ready app
 │   ├── app/
 │   │   ├── __init__.py
 │   │   ├── main.py         # FastAPI app setup, lifespan events
-│   │   ├── api/            # API Endpoints (routers)
-│   │   ├── core/           # Config, core settings, dependencies
-│   │   ├── crud/           # Database/Redis interaction logic
-│   │   ├── models/         # Pydantic models (request/response)
-│   │   ├── schemas/        # Database schemas (e.g., SQLAlchemy models)
+│   │   ├── api/            # API Endpoints (routers: chat, auth, sessions)
+│   │   ├── core/           # Config, core settings, dependencies, security
+│   │   ├── crud/           # Database/Redis interaction logic (user, session, history)
+│   │   ├── db/             # DB Session setup, Base class
+│   │   ├── models/         # SQLAlchemy models (User, ConversationSession)
+│   │   ├── schemas/        # Pydantic schemas (request/response/db mapping)
 │   │   ├── services/       # Business logic, LLM interaction, history management
 │   │   └── utils/          # Helper functions, external clients (e.g., Ollama)
 │   ├── tests/              # Pytest tests for the backend
-│   ├── app.py            # Terminal API client (with session handling)
+│   ├── alembic/            # Alembic migration scripts
+│   ├── alembic.ini         # Alembic configuration
+│   ├── app.py            # DEPRECATED/NEEDS UPDATE: Terminal API client
 │   └── Dockerfile
 ├── pyproject.toml          # Project definition and dependencies
 ├── frontend/               # (Placeholder for future frontend)
@@ -68,113 +71,139 @@ This project is a hands-on exercise in building a complete, production-ready app
 2.  **Clone the repository:**
     ```bash
     git clone <your-repo-url>
-    cd end-to-end-llm-app
+    cd end_to_end_llm_app
     ```
-3.  **(Optional) Create and activate a virtual environment:**
+3.  **Configure Environment:**
+    *   Copy `.env.example` to `.env`: `cp .env.example .env`
+    *   Edit `.env` and fill in values for:
+        *   `OPENAI_API_KEY` (if needed later)
+        *   `POSTGRES_PASSWORD` (generate a secure password)
+        *   `JWT_SECRET_KEY` (generate using `openssl rand -hex 32`)
+        *   Verify `DATABASE_URL` and `REDIS_URL` match your setup (defaults should work with Docker Compose).
+    *   **Important:** Do NOT commit `.env` to Git.
+
+4.  **(Optional) Create and activate a virtual environment:**
     While dependencies are installed in the Docker image, you might want a local venv for IDE integration or direct script running.
     ```bash
     python3.11 -m venv .venv
     source .venv/bin/activate
     pip install -e '.[test]' # Installs backend + test deps locally
     ```
-4.  **Build and start services:**
-    This will build the backend image and start both the backend and Redis containers.
+5.  **Build and start services:**
+    This will build the backend image and start the `backend`, `postgres`, and `redis` containers.
     ```bash
     docker compose up --build -d
     ```
     *   `-d` runs containers in detached mode.
     *   `--build` forces a rebuild of images if their source (Dockerfile, code) has changed.
 
-5.  **Check container status:**
+6.  **Apply Database Migrations:**
+    Run the Alembic migrations to create the necessary tables in the PostgreSQL database.
+    ```bash
+    # Run from project root
+    alembic -c backend/alembic.ini upgrade head
+    # Alternatively, run inside the backend container:
+    # docker compose exec backend alembic upgrade head
+    ```
+    *   Note: You might need to adjust `DATABASE_URL` in `.env` to use `localhost` instead of `postgres` when running Alembic commands directly from your host, as explained in DOCKER.md.
+
+7.  **Check container status:**
     ```bash
     docker ps
     ```
-    You should see `end_to_end_llm_app-backend-1` and `end_to_end_llm_app-redis-1` running.
+    You should see `backend`, `postgres`, and `redis` containers running.
 
-6.  **Check API:** Open [http://localhost:8000/docs](http://localhost:8000/docs) in your browser to see the FastAPI documentation.
+8.  **Check API:** Open [http://localhost:8000/docs](http://localhost:8000/docs) in your browser. You should see the API documentation, including new endpoints for `/auth` and `/sessions`.
 
 ## Using the Application
 
-### Interactive Terminal Client
+### Interactive Terminal Client (Needs Update)
 
-The easiest way to interact with the API and test session persistence.
+**NOTE:** The current `backend/app.py` terminal client is **outdated** and does **not** support the new authentication flow. It needs to be updated to:
+1.  Prompt for username and password.
+2.  Call the `/api/v1/auth/token` endpoint to get a JWT.
+3.  Use the obtained token in an `Authorization: Bearer <token>` header for subsequent requests.
+4.  Call the `/api/v1/sessions/` endpoint to list sessions.
+5.  Allow selecting an existing session or starting a new one.
+6.  Send the `session_id` (which is a UUID) and the token to the chat endpoints.
 
-1.  **Ensure services are running** (`docker compose up -d`).
-2.  **Run the client:**
-    ```bash
-    python backend/app.py
-    ```
-3.  **Session Handling:** The client will connect to Redis and prompt you:
-    *   It lists existing session IDs found in Redis.
-    *   Enter `0` to start a new session with a random ID.
-    *   Enter the index number corresponding to an existing session ID to resume it.
-4.  Chat with the LLM. Type `quit` or `exit` to end.
+*(This update is left as a future exercise for now.)*
 
 ### Using `curl`
 
-You can also interact directly with the API endpoints using `curl`.
+You can interact with the API using `curl`. You first need to obtain an access token.
 
-*   **Required Headers:** `-H "Content-Type: application/json"`
-*   **Required Body Fields:** `prompt` (string), `session_id` (string), `model_name` (string)
+1.  **Register a User (Endpoint TBD):** (Currently, no registration endpoint exists. You might need to create a user directly in the database for initial testing).
 
-**Example: Non-Streaming Chat (`/api/v1/chat/`)**
+2.  **Get Access Token (`/api/v1/auth/token`):**
+    Replace `testuser` and `testpassword` with the credentials of a user you created.
+    ```bash
+    # Use application/x-www-form-urlencoded for token endpoint
+    ACCESS_TOKEN_RESPONSE=$(curl -X POST http://localhost:8000/api/v1/auth/token \
+      -H "Content-Type: application/x-www-form-urlencoded" \
+      -d "username=testuser&password=testpassword")
+    
+    # Extract the token (requires jq - install if needed: brew install jq)
+    ACCESS_TOKEN=$(echo $ACCESS_TOKEN_RESPONSE | jq -r .access_token)
+    
+    echo "Access Token: $ACCESS_TOKEN"
+    ```
 
-```bash
-SESSION_ID="my_curl_session_1"
-MODEL_NAME="gemma3:12b-it-qat" # Or your preferred model
+3.  **List Sessions (`/api/v1/sessions/`):**
+    Use the obtained token in the Authorization header.
+    ```bash
+    curl -X GET http://localhost:8000/api/v1/sessions/ \
+      -H "Authorization: Bearer $ACCESS_TOKEN"
+    ```
+    *This will return a list of session metadata JSON objects.* 
 
-# First request
-curl -X POST http://localhost:8000/api/v1/chat/ \
-  -H "Content-Type: application/json" \
-  -d "{\
-        \"prompt\": \"What is the capital of France?",\
-        \"session_id\": \"$SESSION_ID\",\
-        \"model_name\": \"$MODEL_NAME\"\
-      }"
+4.  **Start/Continue Chat (Non-Streaming - `/api/v1/chat/`):**
+    Choose a `session_id` (UUID string) - either from the list above or generate a new one (e.g., using `uuidgen` or Python's `uuid.uuid4()`).
+    ```bash
+    SESSION_ID="$(uuidgen)" # Example: Generate a new UUID for a new session
+    # Or use an existing session_uuid from the list command
+    MODEL_NAME="gemma3:12b-it-qat" # Or your preferred model
 
-# Second request (same session)
-curl -X POST http://localhost:8000/api/v1/chat/ \
-  -H "Content-Type: application/json" \
-  -d "{\
-        \"prompt\": \"How many people live there?",\
-        \"session_id\": \"$SESSION_ID\",\
-        \"model_name\": \"$MODEL_NAME\"\
-      }"
-```
-*Note: The non-streaming endpoint returns the full `LLMResponse` object as JSON.* 
+    curl -X POST http://localhost:8000/api/v1/chat/ \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer $ACCESS_TOKEN" \
+      -d "{\
+            \"prompt\": \"What is the capital of France?",\
+            \"session_id\": \"$SESSION_ID\",\
+            \"model_name\": \"$MODEL_NAME\"\
+          }"
+    ```
 
-**Example: Streaming Chat (`/api/v1/chat/stream`)**
+5.  **Start/Continue Chat (Streaming - `/api/v1/chat/stream`):**
+    ```bash
+    SESSION_ID="$(uuidgen)" # Or use an existing one
+    MODEL_NAME="gemma3:12b-it-qat"
 
-```bash
-SESSION_ID="my_curl_session_2"
-MODEL_NAME="gemma3:12b-it-qat"
-
-curl -X POST http://localhost:8000/api/v1/chat/stream \
-  -H "Content-Type: application/json" \
-  -d "{\
-        \"prompt\": \"Tell me about Redis.",\
-        \"session_id\": \"$SESSION_ID\",\
-        \"model_name\": \"$MODEL_NAME\"\
-      }" \
-  --no-buffer
-```
-*Note: `--no-buffer` is recommended with `curl` for streaming to see chunks as they arrive. The streaming endpoint returns plain text chunks.* 
+    curl -X POST http://localhost:8000/api/v1/chat/stream \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer $ACCESS_TOKEN" \
+      -d "{\
+            \"prompt\": \"Tell me about Redis.",\
+            \"session_id\": \"$SESSION_ID\",\
+            \"model_name\": \"$MODEL_NAME\"\
+          }" \
+      --no-buffer
+    ```
 
 ## Development Workflow
 
-### Redis Persistence
+### Data Persistence
+*   **User Accounts & Session Metadata:** Stored in the `postgres` service container using PostgreSQL. Data persists as long as the PostgreSQL volume (`postgres_data`) exists.
+*   **Chat History Content:** Stored in the `redis` service container using Redis Lists. Data persists as long as the Redis volume (`redis_data`) exists.
 
-*   Chat history is now stored in the `redis` service container using Redis Lists.
-*   Each session ID maps to a key in Redis (prefixed with `session:`).
-*   Each key holds a list where each element is a JSON string representing a `HistoryEntry` (user message + LLM response).
-*   Data persists as long as the Redis volume (`redis_data`) exists. Stopping and starting containers with `docker compose up`/`down`/`stop`/`start` will preserve history.
-*   **Stopping only the backend:** If you want to restart the backend *without* losing the current session history (useful during development), use:
-    ```bash
-    docker compose stop backend
-    # Make code changes
-    docker compose build backend # Rebuild if needed
-    docker compose up -d backend # Restart backend, Redis was untouched
-    ```
+### Stopping Only the Backend:
+If you want to restart the backend *without* losing the current session history (useful during development), use:
+```bash
+docker compose stop backend
+# Make code changes
+docker compose build backend # Rebuild if needed
+docker compose up -d backend # Restart backend, Redis was untouched
+```
 
 ### Forcing Rebuild without Cache (`--no-cache`)
 
@@ -190,7 +219,7 @@ Sometimes Docker's build cache can cause issues if it reuses old layers when you
 
 ### Inspecting Redis Data
 
-You can directly view the history stored in Redis:
+You can directly view the *chat history* stored in Redis:
 
 1.  **Connect to Redis:**
     ```bash
@@ -201,11 +230,27 @@ You can directly view the history stored in Redis:
     *   `KEYS "session:*"`: List all keys used for session history.
     *   `TYPE session:<session_id>`: Should return `list`.
     *   `LLEN session:<session_id>`: Show how many turns are in the history list.
-    *   `LRANGE session:<session_id> 0 -1`: Show all history entries (JSON strings) for the session (newest at the top/index 0).
-    *   `LINDEX session:<session_id> 0`: Show the most recent history entry (JSON string).
+    *   `LRANGE session:<session_id> 0 -1`: Show all history entries (JSON strings) for the session.
     *   `DEL session:<session_id>`: Delete the history for a specific session.
     *   `FLUSHDB`: **DANGER!** Deletes *all* keys in the current database (DB 0 by default).
     *   `exit`: Quit `redis-cli`.
+
+### Inspecting PostgreSQL Data
+
+You can connect to the PostgreSQL database running in Docker to inspect user accounts and session metadata.
+
+1.  **Connect using `psql`:**
+    ```bash
+    docker compose exec postgres psql -U appuser -d appdb
+    # You will be prompted for the password defined in your .env file
+    ```
+2.  **Useful `psql` Commands:**
+    *   `\dt`: List all tables (should show `users`, `conversation_sessions`, `alembic_version`).
+    *   `\d users`: Describe the users table columns.
+    *   `\d conversation_sessions`: Describe the sessions table.
+    *   `SELECT * FROM users;`: Show all users.
+    *   `SELECT * FROM conversation_sessions WHERE user_id = '<user-uuid>';`: Show sessions for a specific user.
+    *   `\q`: Quit `psql`.
 
 ## Running Tests ✅
 
@@ -224,6 +269,7 @@ This ensures tests run in the same environment as the application.
     ```
     *   Add flags like `-v` (verbose) or `-k test_my_function` as needed.
     *   The `pytest.ini` file filters out common noisy warnings.
+    *   Note: Database-dependent tests might require additional setup (e.g., a separate test database, fixtures to manage data).
 
 **Running Tests Locally:**
 
@@ -236,7 +282,4 @@ source .venv/bin/activate
 python -m pytest
 ```
 
-*(See previous README section for more detailed pytest commands if needed)*
-
 Let's build something awesome and learn a ton along the way!
-

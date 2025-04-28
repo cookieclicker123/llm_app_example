@@ -15,7 +15,12 @@ services:
     env_file:
       - .env
     environment:
-      - REDIS_HOST=redis # Override default host to use service name
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      # REDIS_PASSWORD: your_redis_password # Uncomment and set if redis requires password
+      OPENAI_API_KEY: ${OPENAI_API_KEY} # Make sure this is in your .env or system env
+      # Construct the database URL from other env vars
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
     # Mount volumes to persist data and potentially enable code updates
     volumes:
       # Map the local tmp directory to the container's tmp directory
@@ -24,37 +29,43 @@ services:
       # Map the local tests directory to the container's tests directory
       # Ensures tests run with the latest local code during development
       - ./backend/tests:/app/backend/tests
-      # Optional: Uncomment below to mount the *entire* backend code 
-      # for live updates without rebuilding (if using --reload with uvicorn).
-      # Be cautious, this bypasses the code baked into the image during build.
-      # - ./backend:/app/backend
+      # Disable main code mount for debugging import issues
+      # - ./backend:/app/backend # Mount backend code for development
     # Ensure backend starts after redis is healthy
     depends_on:
       redis:
-        condition: service_healthy
+        condition: service_started
+      postgres: # Add dependency on postgres
+        condition: service_healthy # Wait for postgres to be ready
     #   - db # If using a DB
     #   - ollama # If running Ollama in compose
 
   # Database service (PostgreSQL) - Uncomment and configure later
-  # db:
-  #   image: postgres:15
-  #   volumes:
-  #     - postgres_data:/var/lib/postgresql/data/
-  #   environment:
-  #     - POSTGRES_DB=appdb
-  #     - POSTGRES_USER=user
-  #     - POSTGRES_PASSWORD=password
-  #   env_file:
-  #     - .env # Could also load DB secrets from here
+  postgres:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432" # Expose postgres port to host (optional, for direct access/debugging)
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}       # Read from .env
+      POSTGRES_USER: ${POSTGRES_USER}     # Read from .env
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD} # Read from .env
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # Cache service (Redis)
   redis:
-    image: redis:7-alpine
-    command: redis-server --save "" --appendonly yes # Disable RDB, enable AOF
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    # Add password authentication if needed
+    # command: redis-server --requirepass your_redis_password
     volumes:
       - redis_data:/data
-    ports:
-      - "6379:6379" # Expose Redis port to host (optional, for direct inspection)
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -93,8 +104,8 @@ services:
   #     - grafana_data:/var/lib/grafana
 
 volumes:
-  postgres_data:
-  redis_data: # Added named volume for Redis data
+  redis_data:
+  postgres_data: # Define the named volume for postgres
   ollama_data:
   grafana_data:
 

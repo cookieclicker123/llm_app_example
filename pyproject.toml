@@ -20,7 +20,15 @@ dependencies = [
     "pydantic-settings", # Use pydantic-settings for config
     "python-dotenv", # For config later
     "redis[hiredis]>=5.0.0", # Added Redis client
-    # Add sqlalchemy, psycopg2-binary etc. later when needed
+    # Database and Auth dependencies
+    "sqlalchemy[asyncio]>=2.0", # SQLAlchemy ORM with asyncio
+    "asyncpg",                   # Async PostgreSQL driver
+    "alembic",                   # Database migrations
+    "passlib[bcrypt]",           # Password hashing
+    "python-jose[cryptography]", # JWT handling
+    "python-multipart",          # Required by FastAPI for OAuth2 password flow form data
+    "email-validator",           # Required by Pydantic for EmailStr validation
+    # Add other dependencies as needed
 ]
 
 [project.optional-dependencies]
@@ -34,10 +42,11 @@ test = [
 
 # You can add other groups like 'dev' for linters, formatters etc.
 
-[tool.setuptools]
-# Include the backend/app package
-packages = ["backend.app"]
-# If you move app to src, change this (e.g., package_dir = {"" = "src"})
+[tool.setuptools.packages.find]
+# Find packages starting from the root context directory ('.' during build)
+# and specifically look inside the 'backend' directory.
+where = ["."] # Search from the root of the context
+include = ["backend", "backend.*"] # Explicitly include backend and its subpackages
 
 [tool.pytest.ini_options]
 # Recommended asyncio mode

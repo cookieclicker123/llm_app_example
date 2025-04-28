@@ -1,13 +1,19 @@
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI
 import logging # Import logging
 import sys # Import sys to output to stdout
 from contextlib import asynccontextmanager
 import httpx
 import redis.asyncio as redis # Import async redis client
-from backend.app.core.config import settings # Assuming settings are needed
-
-# Import the router
+# Revert to absolute imports starting from backend
+from backend.app.core.config import settings
 from backend.app.api import chat_router
+from backend.app.api import auth as auth_router
+from backend.app.api import session as session_router
+
+# Import routers
+from backend.app.api import chat_router
+from backend.app.api import auth as auth_router # Import the new auth router
+from backend.app.api import session as session_router # Import the new session router
 
 # --- Logging Configuration --- #
 # Configure logging to output INFO level messages to stdout
@@ -83,6 +89,20 @@ app.include_router(
     chat_router,
     prefix="/api/v1/chat", # Route prefix for chat endpoints
     tags=["Chat"]         # Tag for OpenAPI documentation
+)
+
+# Include the auth router
+app.include_router(
+    auth_router.router, # Access the router object from the auth module
+    prefix="/api/v1/auth", # Route prefix for auth endpoints
+    tags=["Authentication"] # Tag for OpenAPI documentation
+)
+
+# Include the session router
+app.include_router(
+    session_router.router,
+    prefix="/api/v1/sessions", # Route prefix for session endpoints
+    tags=["Sessions"]        # Tag for OpenAPI documentation
 )
 
 # Add other routers here as the application grows 

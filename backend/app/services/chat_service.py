@@ -6,11 +6,16 @@ import uuid # Import uuid
 from pathlib import Path # Ensure Path is imported
 from fastapi import Depends # Import Depends
 import redis.asyncio as redis # Import redis
+# Add DB and User imports
+from sqlalchemy.ext.asyncio import AsyncSession
+from backend.app.models.user import User
+from backend.app.db.session import get_db_session
 
 from backend.app.models.chat import LLMRequest, LLMResponse, StreamingChunk
 from backend.app.core.types import LLMFunction, LLMStreamingFunction
 from backend.app.core.config import get_settings, Settings
-from backend.app.services.history_service import save_history_entry, get_history
+# Update history service import path if necessary
+from backend.app.services import history_service # Assuming history_service is in services
 from backend.app.core.dependencies import get_redis # Import redis dependency
 
 logger = logging.getLogger(__name__)
@@ -22,7 +27,9 @@ async def handle_chat_request(
     request: LLMRequest,
     llm_generate_func: LLMFunction, # Dependency: The function to call the LLM
     app_settings: Settings = Depends(get_settings), # Dependency: Inject settings
-    redis_conn: redis.Redis = Depends(get_redis) # Dependency: Inject Redis
+    redis_conn: redis.Redis = Depends(get_redis), # Dependency: Inject Redis
+    db: AsyncSession = Depends(get_db_session), # Dependency: Inject DB Session
+    current_user: User = Depends() # Placeholder: Add Depends(get_current_active_user) later
 ) -> LLMResponse:
     """
     Handles a non-streaming chat request, records metadata, and returns a rich LLMResponse.
@@ -34,22 +41,33 @@ async def handle_chat_request(
         llm_generate_func: The specific LLM function (mock or real) to use.
         app_settings: The injected settings object.
         redis_conn: The injected Redis connection.
+        db: The injected DB session.
+        current_user: The current active user.
 
     Returns:
         A rich LLMResponse object containing the response and metadata.
     """
-    logger.info(f"Handling chat request for session: {request.session_id}")
+    logger.info(f"Handling chat request for session: {request.session_id} by user {current_user.username}")
     response_id = uuid.uuid4()
     created_at = datetime.now(UTC)
     start_time = time.perf_counter()
 
-    # 1. Retrieve conversation history using request.session_id
+    # 1. Retrieve conversation history using request.session_id (passing db/user)
     try:
-        retrieved_history = await get_history(session_id=request.session_id, redis_conn=redis_conn)
+        retrieved_history = await history_service.get_history(
+            session_id_str=request.session_id, # Pass session_id as string
+            redis_conn=redis_conn, 
+            db=db, 
+            current_user=current_user
+        )
         logger.info(f"Retrieved {len(retrieved_history)} history entries for session {request.session_id}.")
     except Exception as e:
         logger.exception(f"Failed to retrieve history for session {request.session_id}.")
-        retrieved_history = [] # Default to empty list on error
+        # Let exception propagate if it's an auth/not found error from history service
+        # Only default to empty list for Redis errors?
+        # Re-raising might be better to surface auth errors
+        raise
+        # retrieved_history = [] # Default to empty list on error
 
     # Future enhancements:
     # 2. Format prompt with history and system prompt (LLM client responsibility?)
@@ -106,17 +124,21 @@ async def handle_chat_request(
         finish_reason=finish_reason
     )
 
-    # --- Save request/response pair to history --- #
+    # --- Save request/response pair to history (passing db/user) --- #
     try:
-        await save_history_entry(
-            session_id=request.session_id,
+        await history_service.save_history_entry(
+            session_id_str=request.session_id, # Pass session_id as string
             user_message=request.prompt,
             llm_response=llm_response.response, # Save the actual response text
-            redis_conn=redis_conn
+            redis_conn=redis_conn,
+            db=db,
+            current_user=current_user
         )
         logger.info(f"Saved interaction to history for session {request.session_id}.")
     except Exception as e:
+        # Let exception propagate if it's an error during session creation/check
         logger.exception(f"Failed to save interaction to history for session {request.session_id}.")
+        raise 
 
     # --- Save the response to JSON --- #
     save_dir = app_settings.CHAT_RESPONSE_SAVE_DIR
@@ -155,7 +177,9 @@ async def handle_chat_request(
 async def handle_chat_stream(
     request: LLMRequest,
     llm_stream_func: LLMStreamingFunction, # Dependency: The streaming LLM function
-    redis_conn: redis.Redis = Depends(get_redis) # Dependency: Inject Redis
+    redis_conn: redis.Redis = Depends(get_redis), # Dependency: Inject Redis
+    db: AsyncSession = Depends(get_db_session), # Dependency: Inject DB Session
+    current_user: User = Depends() # Placeholder: Add Depends(get_current_active_user) later
 ) -> AsyncGenerator[StreamingChunk, None]:
     """
     Handles a streaming chat request by calling the provided streaming LLM function.
@@ -165,28 +189,65 @@ async def handle_chat_stream(
         request: The user's request data.
         llm_stream_func: The specific streaming LLM function (mock or real) to use.
         redis_conn: The injected Redis connection.
+        db: The injected DB session.
+        current_user: The current active user.
 
     Yields:
         StreamingChunk: Chunks of the LLM response.
     """
-    logger.info(f"Handling chat stream for session: {request.session_id}")
+    logger.info(f"Handling chat stream for session: {request.session_id} by user {current_user.username}")
 
-    # 1. Retrieve conversation history using request.session_id
+    # 1. Retrieve conversation history using request.session_id (passing db/user)
+    aggregated_response = "" # To store the full response for history saving
     try:
-        retrieved_history = await get_history(session_id=request.session_id, redis_conn=redis_conn)
+        retrieved_history = await history_service.get_history(
+            session_id_str=request.session_id, # Pass session_id as string
+            redis_conn=redis_conn, 
+            db=db, 
+            current_user=current_user
+        )
         logger.info(f"Retrieved {len(retrieved_history)} history entries for streaming session {request.session_id}.")
+    except HTTPException as e:
+        # If session not found (404) or forbidden (403), let it propagate
+        if e.status_code == status.HTTP_404_NOT_FOUND or e.status_code == status.HTTP_403_FORBIDDEN:
+             logger.warning(f"History retrieval failed for stream session {request.session_id}: {e.detail}")
+             raise e 
+        # For other errors, maybe default to empty list? Or raise?
+        logger.exception(f"Unexpected error retrieving history for streaming session {request.session_id}.")
+        raise # Re-raising generic exceptions for now
+        # retrieved_history = [] 
     except Exception as e:
-        logger.exception(f"Failed to retrieve history for streaming session {request.session_id}.")
-        retrieved_history = [] # Default to empty list on error
-
-    # Future enhancements (similar to non-streaming)
-    # - Save full response after stream? (Needs aggregated response)
+        logger.exception(f"Unexpected error retrieving history for streaming session {request.session_id}.")
+        raise # Re-raise other unexpected errors
+        # retrieved_history = [] 
 
     # Call the injected streaming LLM function and yield chunks
-    # Pass history to the LLM stream function (assuming it accepts a 'history' argument)
-    # Pass a copy to prevent mutation issues if the underlying history store is modified during the call
-    async for chunk in llm_stream_func(request, history=retrieved_history.copy()):
-        yield chunk
+    try:
+        async for chunk in llm_stream_func(request, history=retrieved_history.copy()):
+            yield chunk
+            # Aggregate the response content from chunks
+            if isinstance(chunk, StreamingChunk) and chunk.content:
+                aggregated_response += chunk.content
+    except Exception as e:
+         logger.exception(f"Error during LLM stream for session {request.session_id}.")
+         # Decide how to handle stream errors - yield an error chunk?
+         yield StreamingChunk(session_id=request.session_id, content=f"Error during stream: {e}", type="error")
+         return # Stop the generator
 
-    # Future enhancements (logging completion, saving full response?)
+    # --- Save full interaction after successful stream --- #
+    if aggregated_response:
+        try:
+            await history_service.save_history_entry(
+                session_id_str=request.session_id,
+                user_message=request.prompt,
+                llm_response=aggregated_response,
+                redis_conn=redis_conn,
+                db=db,
+                current_user=current_user
+            )
+            logger.info(f"Saved full streamed interaction to history for session {request.session_id}.")
+        except Exception as e:
+            logger.exception(f"Failed to save full streamed interaction to history for session {request.session_id}.")
+            # Don't raise here, as the stream completed for the user
+
     logger.info(f"Finished handling chat stream for session: {request.session_id}") 
